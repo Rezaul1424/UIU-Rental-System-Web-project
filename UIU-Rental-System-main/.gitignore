@@ -1,0 +1,64 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Thumbnails
+._*
+
+# Icon must end with two \\r
+Icon\r
+
+# Files that might appear in the root of a volume
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files
+.env
+.env.*
+
+# IDEs
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# Logs
+*.log
+
+# Build artifacts
+dist/
+build/
+
+# System files
+Thumbs.db
+
+# Vite
+.vite/
+.vite-cache/
+
+# pnpm (if used)
+pnpm-debug.log*
+
+# OS specific
+.AppleDouble
+.LSOverride
+
