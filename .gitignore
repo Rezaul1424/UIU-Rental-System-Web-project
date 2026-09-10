@@ -62,3 +62,7 @@ pnpm-debug.log*
 .AppleDouble
 .LSOverride
 
+# Local planning documents
+BACKEND_PLAN.md
+BACKEND_IMPLEMENTATION_DETAILS.md
+
