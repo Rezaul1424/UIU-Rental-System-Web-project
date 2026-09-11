@@ -6,24 +6,19 @@ import 'dotenv/config';
 import { buildApp } from './app.js';
 import { env } from './config/env.js';
 
-async function start(): Promise<void> {
-  const app = await buildApp();
+function start(): void {
+  const app = buildApp();
 
-  try {
-    await app.listen({ port: env.PORT, host: '0.0.0.0' });
-    app.log.info(`Backend listening on http://localhost:${env.PORT}`);
-    app.log.info(`Health check: http://localhost:${env.PORT}/health`);
-  } catch (err) {
-    app.log.error(err);
-    process.exit(1);
-  }
+  const server = app.listen(env.PORT, () => {
+    console.log(`Backend listening on http://localhost:${env.PORT}`);
+    console.log(`Health check: http://localhost:${env.PORT}/health`);
+  });
 
   // Graceful shutdown: let in-flight requests finish instead of dying mid-response.
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-    process.on(signal, async () => {
-      app.log.info(`Received ${signal}, shutting down gracefully...`);
-      await app.close();
-      process.exit(0);
+    process.on(signal, () => {
+      console.log(`Received ${signal}, shutting down gracefully...`);
+      server.close(() => process.exit(0));
     });
   }
 }

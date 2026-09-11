@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyError } from 'fastify';
+import type { Request, Response, NextFunction } from 'express';
 import { AppError } from '../errors/AppError.js';
 import { env } from '../config/env.js';
 
@@ -15,44 +15,40 @@ function toErrorBody(code: string, message: string, statusCode: number): ErrorBo
 }
 
 /**
- * Every error thrown (or passed to `reply.send(err)`) anywhere in the app
- * funnels through here, so API consumers always get the same JSON shape:
- *   { "error": { "code": "...", "message": "...", "statusCode": 400 } }
+ * Express detects this as an error handler specifically because it has
+ * 4 parameters (err, req, res, next) — that arity is how Express tells
+ * error middleware apart from regular middleware. Must be registered
+ * AFTER all routes in app.ts.
  */
-export async function registerErrorHandler(app: FastifyInstance): Promise<void> {
-  app.setErrorHandler((error: FastifyError | AppError, request, reply) => {
-    if (error instanceof AppError) {
-      reply
-        .status(error.statusCode)
-        .send(toErrorBody(error.code, error.message, error.statusCode));
-      return;
-    }
+export function errorHandler(
+  err: Error,
+  _req: Request,
+  res: Response,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _next: NextFunction,
+): void {
+  if (err instanceof AppError) {
+    res.status(err.statusCode).json(toErrorBody(err.code, err.message, err.statusCode));
+    return;
+  }
 
-    // Fastify's own schema-validation errors carry a `validation` array.
-    if ('validation' in error && error.validation) {
-      reply
-        .status(400)
-        .send(toErrorBody('VALIDATION_ERROR', error.message, 400));
-      return;
-    }
+  // Unknown/unexpected error: log full detail server-side, but never
+  // leak internals (stack traces, DB errors, etc.) to the client.
+  // eslint-disable-next-line no-console
+  console.error('Unhandled error:', err);
 
-    // Unknown/unexpected error: log full detail server-side, but never
-    // leak internals (stack traces, DB errors, etc.) to the client.
-    request.log.error({ err: error }, 'Unhandled error');
+  const isProd = env.NODE_ENV === 'production';
+  res
+    .status(500)
+    .json(toErrorBody('INTERNAL_SERVER_ERROR', isProd ? 'Something went wrong' : err.message, 500));
+}
 
-    const isProd = env.NODE_ENV === 'production';
-    reply.status(500).send(
-      toErrorBody(
-        'INTERNAL_SERVER_ERROR',
-        isProd ? 'Something went wrong' : error.message,
-        500,
-      ),
-    );
-  });
-
-  app.setNotFoundHandler((request, reply) => {
-    reply
-      .status(404)
-      .send(toErrorBody('ROUTE_NOT_FOUND', `Route ${request.method} ${request.url} not found`, 404));
-  });
+/**
+ * Registered BEFORE the error handler but AFTER all routes — catches
+ * requests to routes that don't exist at all.
+ */
+export function notFoundHandler(req: Request, res: Response): void {
+  res
+    .status(404)
+    .json(toErrorBody('ROUTE_NOT_FOUND', `Route ${req.method} ${req.originalUrl} not found`, 404));
 }
