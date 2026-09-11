@@ -17,7 +17,9 @@ v1Router.use(healthRouter);
 v1Router.use('/auth', authRouter);
 v1Router.use('/security', securityRouter);
 v1Router.use('/listings', listingsRouter);
+v1Router.use('/student', studentRouter);
 v1Router.use('/students', studentRouter);
+v1Router.use('/landlord', landlordRouter);
 v1Router.use('/landlords', landlordRouter);
 
 export { v1Router };

@@ -2,18 +2,11 @@ import { z } from 'zod';
 
 export const StudentProfileSchema = z.object({
   id: z.string().min(1),
-  userId: z.string().min(1),
-  studentId: z.string().trim().min(3).max(30).optional(),
   name: z.string().trim().min(1),
   email: z.string().trim().email(),
-  phone: z.string().trim().min(7).max(20).optional(),
-  department: z.string().trim().min(1).optional(),
-  yearLevel: z.string().trim().min(1).optional(),
-  emergencyContact: z.string().trim().min(1).optional(),
-  preferredArea: z.string().trim().min(1).optional(),
-  bio: z.string().trim().max(500).optional(),
-  createdAt: z.string().datetime({ offset: true }).optional(),
-  updatedAt: z.string().datetime({ offset: true }).optional(),
+  studentId: z.string().trim().min(3).max(30).optional(),
+  role: z.enum(['admin', 'landlord', 'student', 'guest']).default('student'),
+  status: z.enum(['active', 'pending', 'suspended', 'deactivated']).default('active'),
 });
 
 export const StudentFavoritePayloadSchema = z.object({
@@ -60,10 +53,16 @@ export const StudentMaintenanceRequestSchema = z.object({
   id: z.string().min(1),
   propertyId: z.string().min(1),
   landlordId: z.string().min(1),
+  category: z.string().trim().min(1).max(50).optional(),
   issue: z.string().trim().min(1).max(255),
   description: z.string().trim().max(2000).optional(),
   priority: z.enum(['Low', 'Medium', 'High']),
   status: z.enum(['open', 'in-progress', 'resolved']),
+  attachments: z.array(z.object({
+    name: z.string().trim().min(1),
+    type: z.string().trim().min(1).optional(),
+    sizeBytes: z.number().int().nonnegative().optional(),
+  })).optional(),
   createdAt: z.string().datetime({ offset: true }).optional(),
   updatedAt: z.string().datetime({ offset: true }).optional(),
 });

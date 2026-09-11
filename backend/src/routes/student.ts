@@ -25,9 +25,15 @@ const maintenancePayloadSchema = StudentMaintenanceRequestSchema.omit({
 }).extend({
   propertyId: z.string().trim().min(1),
   landlordId: z.string().trim().min(1),
+  category: z.string().trim().min(1).max(50).optional(),
   issue: z.string().trim().min(1).max(255),
   description: z.string().trim().max(2000).optional(),
   priority: z.enum(['Low', 'Medium', 'High']).default('Medium'),
+  attachments: z.array(z.object({
+    name: z.string().trim().min(1),
+    type: z.string().trim().min(1).optional(),
+    sizeBytes: z.number().int().nonnegative().optional(),
+  })).optional(),
 });
 
 router.use(requireAuth, requireRole('student'));
@@ -37,15 +43,16 @@ router.get('/profile', asyncHandler(async (req, res) => {
   if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
 
   const profile = await studentService.getProfile(currentUser.id);
-  res.json({
-    data: StudentProfileSchema.parse(profile ?? {
-      id: currentUser.id,
-      userId: currentUser.id,
-      name: currentUser.name,
-      email: currentUser.email,
-      studentId: currentUser.studentId,
-    }),
+  const safeProfile = StudentProfileSchema.parse(profile ?? {
+    id: currentUser.id,
+    name: currentUser.name,
+    email: currentUser.email,
+    studentId: currentUser.studentId,
+    role: currentUser.role,
+    status: currentUser.status,
   });
+
+  res.json({ data: safeProfile });
 }));
 
 router.get('/favorites', asyncHandler(async (req, res) => {
@@ -60,8 +67,17 @@ router.post('/favorites', asyncHandler(async (req, res) => {
   const currentUser = req.user;
   if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
 
-  const payload = StudentFavoritePayloadSchema.parse(req.body);
-  const favorite = await studentService.addFavorite(currentUser.id, payload);
+  const listingId = z.string().trim().min(1).parse(req.body?.listingId ?? req.params.listingId);
+  const favorite = await studentService.addFavorite(currentUser.id, { listingId });
+  res.status(201).json({ data: favorite });
+}));
+
+router.post('/favorites/:listingId', asyncHandler(async (req, res) => {
+  const currentUser = req.user;
+  if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+
+  const listingId = favoriteParamsSchema.parse({ listingId: req.params.listingId }).listingId;
+  const favorite = await studentService.addFavorite(currentUser.id, { listingId });
   res.status(201).json({ data: favorite });
 }));
 
@@ -97,6 +113,14 @@ router.get('/leases', asyncHandler(async (req, res) => {
 
   const leases = await studentService.getLeases(currentUser.id);
   res.json({ data: leases });
+}));
+
+router.get('/rent', asyncHandler(async (req, res) => {
+  const currentUser = req.user;
+  if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+
+  const summary = await studentService.getRentSummary(currentUser.id);
+  res.json({ data: summary });
 }));
 
 router.get('/rent-summary', asyncHandler(async (req, res) => {
