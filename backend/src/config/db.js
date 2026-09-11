@@ -29,3 +29,4 @@ export async function testDbConnection() {
 }
 
 export default pool
+

@@ -347,3 +347,4 @@ model Notification {
 
   @@map("notifications")
 }
+

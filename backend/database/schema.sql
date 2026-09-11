@@ -405,3 +405,4 @@ ON DUPLICATE KEY UPDATE `id`=VALUES(`id`);
 
 INSERT INTO `complaint_replies` (`complaint_id`, `sender_id`, `message_text`) VALUES
   ('CMP-001', 1, 'We have received your complaint and are reviewing it with the landlord.');
+

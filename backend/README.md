@@ -67,3 +67,4 @@ Test health endpoint: `GET http://localhost:5000/api/health`.
   - `src/middlewares/auth.middleware.js`: Token verification & role checking (`verifyToken`, `requireRole`).
   - `src/routes/admin.routes.js`: Manage users, resolve complaints, monitor chats.
   - `src/routes/public.routes.js`: Public listings & search.
+
