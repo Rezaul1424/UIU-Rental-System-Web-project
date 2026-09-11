@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import { AppError } from '../errors/AppError.js';
 import { env } from '../config/env.js';
 
@@ -29,6 +30,21 @@ export function errorHandler(
 ): void {
   if (err instanceof AppError) {
     res.status(err.statusCode).json(toErrorBody(err.code, err.message, err.statusCode));
+    return;
+  }
+
+  if (err instanceof z.ZodError) {
+    const firstIssue = err.issues[0];
+    const field = firstIssue?.path.join('.') || 'request';
+    const message = firstIssue?.message || 'Invalid request data';
+
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: `${field}: ${message}`,
+        statusCode: 400,
+      },
+    });
     return;
   }
 
