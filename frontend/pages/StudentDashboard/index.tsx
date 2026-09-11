@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Listing } from '../../types'
 import { listings } from '../../data'
 import { Badge } from '../../components/ui'
 import NotificationBell from '../../components/NotificationBell'
+import { addFavorite, getApplications, getFavorites, getProfile, removeFavorite, submitApplication } from '../../lib/studentApi'
 import { studentNotifs } from './constants'
 import StudentSidebarNav from './Sidebar'
 import OverviewPage from './pages/OverviewPage'
@@ -28,7 +29,43 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
   const [page, setPage] = useState<StudentPage>('overview')
   const [applyListing, setApplyListing] = useState<Listing | null>(null)
   const [viewListing, setViewListing] = useState<Listing | null>(null)
+  const [dashboardLoading, setDashboardLoading] = useState(false)
+  const [dashboardError, setDashboardError] = useState('')
+  const [studentProfile, setStudentProfile] = useState<{ name?: string; email?: string; studentId?: string } | null>(null)
   const openStudentListing = (l: Listing) => { setViewListing(l); setPage('listing-detail') }
+
+  useEffect(() => {
+    let active = true
+
+    const loadStudentData = async () => {
+      setDashboardLoading(true)
+      setDashboardError('')
+
+      try {
+        const [profileResult, favoriteResult, applicationResult] = await Promise.all([
+          getProfile().catch(() => null),
+          getFavorites().catch(() => []),
+          getApplications().catch(() => []),
+        ])
+
+        if (!active) return
+
+        if (profileResult) {
+          setStudentProfile(profileResult)
+        }
+        setFavorites(Array.isArray(favoriteResult) ? favoriteResult : [])
+        setApplications(Array.isArray(applicationResult) ? applicationResult : [])
+      } catch (error) {
+        if (!active) return
+        setDashboardError(error instanceof Error ? error.message : 'Unable to load student dashboard data.')
+      } finally {
+        if (active) setDashboardLoading(false)
+      }
+    }
+
+    loadStudentData()
+    return () => { active = false }
+  }, [])
 
   // Browse filters
   const [typeFilter, setTypeFilter] = useState<'all' | 'Single' | 'Mess' | 'Shared' | 'Sublet'>('all')
@@ -42,7 +79,22 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
 
   // Favorites
   const [favorites, setFavorites] = useState<number[]>([])
-  const toggleFavorite = (id: number) => setFavorites(f => f.includes(id) ? f.filter(x => x !== id) : [...f, id])
+  const toggleFavorite = async (id: number) => {
+    const isFavorite = favorites.includes(id)
+    const nextFavorites = isFavorite ? favorites.filter(f => f !== id) : [...favorites, id]
+    setFavorites(nextFavorites)
+
+    try {
+      if (isFavorite) {
+        await removeFavorite(id)
+      } else {
+        await addFavorite(id)
+      }
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Could not update favorite.')
+      setFavorites(favorites)
+    }
+  }
 
   const filteredListings = listings.filter(l => {
     if (typeFilter !== 'all' && l.type !== typeFilter) return false
@@ -71,12 +123,28 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
     setApplications(prev => prev.map(a => a.listingId === listingId ? { ...a, status: 'cancelled' } : a))
 
   const [appForm, setAppForm] = useState({ studentId: '', phone: '', moveIn: '', message: '', employment: 'Student' })
-  const submitApplication = () => {
+  const submitApplication = async () => {
     if (!applyListing) return
-    setApplications(prev => [...prev, { listingId: applyListing.id, status: 'under-review', date: '31 Jul 2026' }])
-    setPage('applications')
-    setApplyListing(null)
-    setAppForm({ studentId: '', phone: '', moveIn: '', message: '', employment: 'Student' })
+
+    try {
+      await submitStudentApplication({
+        propertyId: String(applyListing.propertyId || applyListing.id),
+        studentCardNo: appForm.studentId || undefined,
+        contactPhone: appForm.phone || undefined,
+        moveInDate: appForm.moveIn || new Date().toISOString().slice(0, 10),
+        employment: appForm.employment || 'Student',
+        message: appForm.message || undefined,
+      })
+
+      const refreshedApplications = await getApplications().catch(() => [])
+      setApplications(refreshedApplications)
+      setPage('applications')
+      setApplyListing(null)
+      setAppForm({ studentId: '', phone: '', moveIn: '', message: '', employment: 'Student' })
+      setDashboardError('')
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Application submission failed.')
+    }
   }
 
   // ── Maintenance ─────────────────────────────────────────────────────────────
@@ -239,11 +307,21 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
         badgeCount={favorites.length}
         pendingApplications={applications.filter(a => a.status === 'under-review').length}
         chatCount={Object.keys(chatThreads).length}
-        userName={userName}
+        userName={studentProfile?.name || userName}
         onSignOut={() => setShowSignOutConfirm(true)}
       />
 
       <main className="flex-1 overflow-auto bg-[#f8fafc]">
+        {dashboardLoading && (
+          <div className="px-6 pt-6">
+            <div className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-700">Loading your student dashboard...</div>
+          </div>
+        )}
+        {dashboardError && (
+          <div className="px-6 pt-6">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">{dashboardError}</div>
+          </div>
+        )}
         {showSignOutConfirm && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
             <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full mx-4">

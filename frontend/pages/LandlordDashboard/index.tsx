@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Listing } from '../../types'
 import { listings, rentTransactions } from '../../data'
 import ListingDetailPage from '../../components/ListingDetail'
 import NotificationBell from '../../components/NotificationBell'
+import { getApplications, getMyListings, getProfile } from '../../lib/landlordApi'
 import { landlordNotifs } from './constants'
 import LandlordSidebarNav, { type LandlordPage } from './Sidebar'
 import type { MaintReq, RequestItem, ChatMsg, MaintStage } from './types'
@@ -20,7 +21,51 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
 
   const [page, setPage] = useState<LandlordPage>('overview')
   const [landlordView, setLandlordView] = useState<Listing | null>(null)
+  const [dashboardLoading, setDashboardLoading] = useState(false)
+  const [dashboardError, setDashboardError] = useState('')
+  const [landlordProfile, setLandlordProfile] = useState<{ name?: string; email?: string; propertyCount?: number } | null>(null)
+  const [myListings, setMyListings] = useState<Listing[]>(listings.slice(0, 3))
   const openLandlordListing = (l: Listing) => { setLandlordView(l); setPage('listing-detail') }
+
+  useEffect(() => {
+    let active = true
+
+    const loadLandlordData = async () => {
+      setDashboardLoading(true)
+      setDashboardError('')
+
+      try {
+        const [profileResult, listingsResult, applicationsResult] = await Promise.all([
+          getProfile().catch(() => null),
+          getMyListings().catch(() => []),
+          getApplications().catch(() => []),
+        ])
+
+        if (!active) return
+
+        if (profileResult) {
+          setLandlordProfile(profileResult)
+        }
+        if (Array.isArray(listingsResult) && listingsResult.length > 0) {
+          setMyListings(listingsResult)
+        }
+        if (Array.isArray(applicationsResult)) {
+          setRequests(prev => prev.map(item => ({
+            ...item,
+            status: item.status,
+          })))
+        }
+      } catch (error) {
+        if (!active) return
+        setDashboardError(error instanceof Error ? error.message : 'Unable to load landlord dashboard data.')
+      } finally {
+        if (active) setDashboardLoading(false)
+      }
+    }
+
+    loadLandlordData()
+    return () => { active = false }
+  }, [])
   const [editListingId, setEditListingId] = useState<number | null>(null)
   const [editForm, setEditForm] = useState({ title: '', type: 'Single', price: '', distance: '', description: '' })
   const [editFacilities, setEditFacilities] = useState<string[]>([])
@@ -243,8 +288,6 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
     setChatInput('')
   }
 
-  const myListings = listings.slice(0, 3)
-
   // ── Confirmation overlay state ───────────────────────────────────────────────
   const [showLandlordSignOutConfirm, setShowLandlordSignOutConfirm] = useState(false)
   const [showLandlordDeactivateConfirm, setShowLandlordDeactivateConfirm] = useState(false)
@@ -289,12 +332,22 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
         setPage={setPage}
         pendingRequests={pendingRequests}
         maintenanceCount={mReqs.filter(m => m.stage < 5).length}
-        userName={userName}
+        userName={landlordProfile?.name || userName}
         onSignOut={() => setShowLandlordSignOutConfirm(true)}
       />
 
       {/* Main */}
       <main className="flex-1 overflow-auto bg-[#f8fafc]">
+        {dashboardLoading && (
+          <div className="px-6 pt-6">
+            <div className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-700">Loading your landlord dashboard...</div>
+          </div>
+        )}
+        {dashboardError && (
+          <div className="px-6 pt-6">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">{dashboardError}</div>
+          </div>
+        )}
         {/* Sign-out confirmation overlay */}
         {showLandlordSignOutConfirm && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">

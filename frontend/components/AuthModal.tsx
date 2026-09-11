@@ -1,6 +1,7 @@
 import React from 'react'
 import { useState } from 'react'
 import type { Role } from '../types'
+import { persistAuthSession } from '../lib/api'
 
 export default function AuthModal({ mode, onClose, onAuth }: { mode: 'login' | 'signup'; onClose: () => void; onAuth: (role: Role, name: string) => void }) {
   const [tab, setTab] = useState(mode)
@@ -41,7 +42,7 @@ export default function AuthModal({ mode, onClose, onAuth }: { mode: 'login' | '
         throw new Error(result.error?.message || 'Authentication failed')
       }
 
-      localStorage.setItem('uiu_auth_token', result.token)
+      persistAuthSession(result.token, { role: result.user.role, name: result.user.name })
       onAuth(result.user.role, result.user.name)
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : 'Authentication failed')
