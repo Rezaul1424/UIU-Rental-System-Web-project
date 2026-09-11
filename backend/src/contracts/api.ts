@@ -3,6 +3,13 @@ import { z } from 'zod';
 export const RoleSchema = z.enum(['admin', 'landlord', 'student', 'guest']);
 export const AccountStatus = z.enum(['active', 'pending', 'suspended', 'deactivated']);
 export const ListingType = z.enum(['apartment', 'house', 'room', 'studio', 'duplex', 'sublet']);
+export const DatabasePropertyType = z.enum(['Single', 'Shared', 'Mess', 'Sublet']);
+export const databasePropertyTypeToApiType = {
+  Single: 'studio',
+  Shared: 'room',
+  Mess: 'apartment',
+  Sublet: 'sublet',
+} as const;
 export const ListingStatus = z.enum([
   'draft',
   'pending',

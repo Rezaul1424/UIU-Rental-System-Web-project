@@ -112,6 +112,12 @@ describe('Module 3 authentication lifecycle', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.message).toBe('Logged out successfully');
+
+    const rejectedAfterLogout = await request(app)
+      .post('/api/v1/auth/logout')
+      .set('Authorization', `Bearer ${login.body.token}`);
+
+    expect(rejectedAfterLogout.status).toBe(401);
   });
 
   it('allows a password reset flow with secure completion', async () => {

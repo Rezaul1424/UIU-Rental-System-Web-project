@@ -21,6 +21,11 @@ const envSchema = z.object({
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
     .default('info'),
+
+  JWT_SECRET: z
+    .string()
+    .min(32, 'JWT_SECRET must contain at least 32 characters')
+    .default('development-only-jwt-secret-change-this-value-1234'),
 });
 
 export type Env = z.infer<typeof envSchema> & {
