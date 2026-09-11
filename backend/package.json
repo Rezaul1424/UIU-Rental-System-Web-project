@@ -2,11 +2,12 @@
   "name": "uiu-rental-system-backend",
   "version": "1.0.0",
   "description": "Backend API for UIU Rental System",
-  "main": "src/server.js",
+  "main": "dist/server.js",
   "type": "module",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
+    "start": "node dist/server.js",
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -16,11 +17,18 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.12.1",
     "mysql2": "^3.12.0"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/morgan": "^1.9.10",
     "prisma": "^6.4.1",
     "supertest": "^7.2.2",
-    "vitest": "^2.1.9"
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.9",
+    "zod": "^4.6.2"
   }
 }
