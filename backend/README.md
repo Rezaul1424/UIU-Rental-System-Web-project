@@ -179,6 +179,23 @@ Authentication uses the MySQL `users`, `auth_sessions`, and
 session, password-reset tokens are stored hashed and single-use, and the JWT
 secret must be at least 32 characters in deployed environments.
 
+## Public Listings API
+
+Public listing routes require no authentication:
+
+```text
+GET /api/v1/listings
+GET /api/v1/listings/:propertyCode
+```
+
+Browse supports `q`, `type`, `maxPrice`, `maxDistance`, `facilities` (comma-separated),
+`bedrooms`, `capacity`, `page`, `limit` (maximum 100), `sortBy` (`relevance`,
+`price`, `distance`, or `recency`), and `sortDirection` (`asc` or `desc`). Only
+available/public listings are returned. Results contain the shared `Listing`
+contract with BDT pricing, owner display name, normalized address/map data,
+facilities, room data, and image metadata. Unavailable or unknown identifiers
+return the standard `LISTING_NOT_FOUND` error.
+
 For a manual first-time import, the baseline schema and its original fixtures are also
 available through MySQL CLI or MySQL Workbench:
 
