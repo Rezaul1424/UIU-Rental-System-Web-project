@@ -45,6 +45,7 @@ type EditListingPageProps = {
   setShowDiscardEditConfirm: Dispatch<SetStateAction<boolean>>
   setShowRemoveListingConfirm: Dispatch<SetStateAction<boolean>>
   setPage: (page: LandlordPage) => void
+  onSubmit: () => void
 }
 
 export default function EditListingPage({
@@ -73,6 +74,7 @@ export default function EditListingPage({
   setShowDiscardEditConfirm,
   setShowRemoveListingConfirm,
   setPage,
+  onSubmit,
 }: EditListingPageProps) {
   const orig = editListingId === null ? null : myListings.find(l => l.id === editListingId)
   if (!orig) return null
@@ -238,7 +240,7 @@ export default function EditListingPage({
           </div>
 
           <div className="flex gap-3 pt-2">
-            <button onClick={() => setPage('listings')} className="flex-1 bg-[#111827] text-white text-sm font-semibold py-3 rounded-xl hover:bg-[#1f2937] transition-colors shadow-sm">Save Changes</button>
+            <button onClick={onSubmit} className="flex-1 bg-[#111827] text-white text-sm font-semibold py-3 rounded-xl hover:bg-[#1f2937] transition-colors shadow-sm">Save Changes</button>
             <button onClick={() => (isEditDirty ? setShowDiscardEditConfirm(true) : setPage('listings'))} className="border border-gray-200 text-gray-500 text-sm font-semibold py-3 px-4 rounded-xl hover:bg-gray-50 transition-colors">Cancel</button>
           </div>
         </div>

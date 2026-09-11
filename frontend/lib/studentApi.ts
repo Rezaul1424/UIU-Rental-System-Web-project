@@ -72,6 +72,48 @@ export type StudentApplication = {
   employment?: string;
 };
 
+export type StudentLeaseSummary = {
+  id?: string;
+  propertyId: string;
+  landlordId?: string;
+  status: 'pending' | 'active' | 'ended' | 'terminated';
+  startDate?: string;
+  endDate?: string;
+  monthlyRent?: number;
+};
+
+export type StudentRentItem = {
+  id: string;
+  leaseId: string;
+  month: string;
+  amount: number;
+  dueDate: string;
+  status: 'pending' | 'processing' | 'paid' | 'failed' | 'refunded' | 'disputed';
+  paid: boolean;
+};
+
+export type StudentReceiptItem = {
+  id: string;
+  amount: number;
+  month: string;
+  paid: boolean;
+  receiptNumber?: string;
+  issuedAt?: string;
+};
+
+export type StudentMaintenanceRecord = {
+  id?: string | number;
+  propertyId?: string;
+  landlordId?: string;
+  category?: string;
+  issue: string;
+  description?: string;
+  priority: 'Low' | 'Medium' | 'High';
+  status: 'open' | 'in-progress' | 'resolved';
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export const getApplications = async (): Promise<StudentApplication[]> => {
   const payload = await api.get<Array<any> | { data?: Array<any> }>('/api/v1/student/applications');
   const applications = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
@@ -90,6 +132,68 @@ export const getApplications = async (): Promise<StudentApplication[]> => {
   }));
 };
 
+export const getLeases = async (): Promise<StudentLeaseSummary[]> => {
+  const payload = await api.get<Array<any> | { data?: Array<any> }>('/api/v1/student/leases');
+  const leases = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
+
+  return leases.map((lease) => ({
+    id: lease.id,
+    propertyId: String(lease.propertyId ?? lease.property_id ?? lease.listingId ?? ''),
+    landlordId: lease.landlordId ?? lease.landlord_id,
+    status: ['pending', 'active', 'ended', 'terminated'].includes(String(lease.status)) ? lease.status : 'active',
+    startDate: lease.startDate ?? lease.start_date,
+    endDate: lease.endDate ?? lease.end_date,
+    monthlyRent: Number(lease.monthlyRent ?? lease.monthly_rent ?? 0),
+  }));
+};
+
+export const getRentSummary = async (): Promise<StudentRentItem[]> => {
+  const payload = await api.get<Array<any> | { data?: Array<any> }>('/api/v1/student/rent');
+  const items = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
+
+  return items.map((item) => ({
+    id: String(item.id ?? item.leaseId ?? item.month),
+    leaseId: String(item.leaseId ?? item.lease_id ?? ''),
+    month: item.month ?? new Date(item.dueDate ?? item.due_date ?? Date.now()).toLocaleString('en-US', { month: 'short', year: 'numeric' }),
+    amount: Number(item.amount ?? 0),
+    dueDate: item.dueDate ?? item.due_date ?? '',
+    status: ['pending', 'processing', 'paid', 'failed', 'refunded', 'disputed'].includes(String(item.status)) ? item.status : 'pending',
+    paid: String(item.status ?? '').toLowerCase() === 'paid',
+  }));
+};
+
+export const getReceipts = async (): Promise<StudentReceiptItem[]> => {
+  const payload = await api.get<Array<any> | { data?: Array<any> }>('/api/v1/student/receipts');
+  const receipts = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
+
+  return receipts.map((receipt) => ({
+    id: String(receipt.id ?? receipt.receiptNumber ?? receipt.obligationId ?? ''),
+    amount: Number(receipt.amount ?? 0),
+    month: receipt.month ?? new Date(receipt.issuedAt ?? receipt.issued_at ?? Date.now()).toLocaleString('en-US', { month: 'short', year: 'numeric' }),
+    paid: true,
+    receiptNumber: receipt.receiptNumber ?? receipt.receipt_number,
+    issuedAt: receipt.issuedAt ?? receipt.issued_at,
+  }));
+};
+
+export const getMaintenanceRequests = async (): Promise<StudentMaintenanceRecord[]> => {
+  const payload = await api.get<Array<any> | { data?: Array<any> }>('/api/v1/student/maintenance');
+  const requests = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
+
+  return requests.map((request) => ({
+    id: request.id,
+    propertyId: String(request.propertyId ?? request.property_id ?? ''),
+    landlordId: request.landlordId ?? request.landlord_id,
+    category: request.category,
+    issue: request.issue,
+    description: request.description,
+    priority: ['Low', 'Medium', 'High'].includes(String(request.priority)) ? request.priority : 'Medium',
+    status: ['open', 'in-progress', 'resolved'].includes(String(request.status)) ? request.status : 'open',
+    createdAt: request.createdAt ?? request.created_at,
+    updatedAt: request.updatedAt ?? request.updated_at,
+  }));
+};
+
 export const submitApplication = async (payload: {
   propertyId: string;
   landlordId?: string;
@@ -99,3 +203,12 @@ export const submitApplication = async (payload: {
   employment?: string;
   message?: string;
 }) => api.post('/api/v1/student/applications', payload);
+
+export const submitMaintenanceRequest = async (payload: {
+  propertyId: string;
+  landlordId: string;
+  category?: string;
+  issue: string;
+  description?: string;
+  priority?: 'Low' | 'Medium' | 'High';
+}) => api.post('/api/v1/student/maintenance', payload);

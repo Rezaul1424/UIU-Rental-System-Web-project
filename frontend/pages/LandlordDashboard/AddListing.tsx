@@ -41,6 +41,7 @@ type AddListingPageProps = {
   setShowDiscardAddConfirm: Dispatch<SetStateAction<boolean>>
   setPage: (page: LandlordPage) => void
   onPin: (pin: { x: number; y: number }) => void
+  onSubmit: () => void
 }
 
 export default function AddListingPage({
@@ -66,6 +67,7 @@ export default function AddListingPage({
   setShowDiscardAddConfirm,
   setPage,
   onPin,
+  onSubmit,
 }: AddListingPageProps) {
   return (
     <>
@@ -221,7 +223,7 @@ export default function AddListingPage({
             </div>
           </div>
 
-          <button onClick={() => setPage('listings')} className="w-full bg-[#111827] text-white text-sm font-semibold py-3 rounded-xl hover:bg-[#1f2937] transition-colors shadow-sm">Publish Listing</button>
+          <button onClick={onSubmit} className="w-full bg-[#111827] text-white text-sm font-semibold py-3 rounded-xl hover:bg-[#1f2937] transition-colors shadow-sm">Publish Listing</button>
         </div>
 
         <div className="space-y-4">

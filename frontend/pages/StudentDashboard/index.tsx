@@ -3,7 +3,7 @@ import type { Listing } from '../../types'
 import { listings } from '../../data'
 import { Badge } from '../../components/ui'
 import NotificationBell from '../../components/NotificationBell'
-import { addFavorite, getApplications, getFavorites, getProfile, removeFavorite, submitApplication as submitStudentApplication, type StudentApplication } from '../../lib/studentApi'
+import { addFavorite, getApplications, getFavorites, getLeases, getMaintenanceRequests, getProfile, getReceipts, getRentSummary, removeFavorite, submitApplication as submitStudentApplication, submitMaintenanceRequest, type StudentApplication } from '../../lib/studentApi'
 import { studentNotifs } from './constants'
 import StudentSidebarNav from './Sidebar'
 import OverviewPage from './pages/OverviewPage'
@@ -42,10 +42,14 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
       setDashboardError('')
 
       try {
-        const [profileResult, favoriteResult, applicationResult] = await Promise.all([
+        const [profileResult, favoriteResult, applicationResult, rentResult, receiptResult, leaseResult, maintenanceResult] = await Promise.all([
           getProfile().catch(() => null),
           getFavorites().catch(() => []),
           getApplications().catch(() => []),
+          getRentSummary().catch(() => []),
+          getReceipts().catch(() => []),
+          getLeases().catch(() => []),
+          getMaintenanceRequests().catch(() => []),
         ])
 
         if (!active) return
@@ -55,6 +59,15 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
         }
         setFavorites(Array.isArray(favoriteResult) ? favoriteResult : [])
         setApplications(Array.isArray(applicationResult) ? applicationResult : [])
+        setRentSummary(Array.isArray(rentResult) ? rentResult : [])
+        setReceipts(Array.isArray(receiptResult) ? receiptResult : [])
+        setLeases(Array.isArray(leaseResult) ? leaseResult : [])
+        setMyRequests(Array.isArray(maintenanceResult) ? maintenanceResult.map((request) => ({
+          id: Number(request.id ?? Date.now()),
+          issue: request.issue,
+          status: request.status,
+          date: request.createdAt ? new Date(request.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A',
+        })) : [])
       } catch (error) {
         if (!active) return
         setDashboardError(error instanceof Error ? error.message : 'Unable to load student dashboard data.')
@@ -152,18 +165,46 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
     }
   }
 
+  // ── Lease and rent data ─────────────────────────────────────────────────────
+  const [rentSummary, setRentSummary] = useState<Array<{ id: string; leaseId: string; month: string; amount: number; dueDate: string; status: string; paid: boolean }>>([])
+  const [receipts, setReceipts] = useState<Array<{ month: string; amount: number; paid: boolean }>>([])
+  const [leases, setLeases] = useState<Array<{ id: string; propertyId: string; landlordId?: string; status: string; startDate?: string; endDate?: string; monthlyRent?: number }>>([])
+
   // ── Maintenance ─────────────────────────────────────────────────────────────
-  const [myRequests, setMyRequests] = useState([
-    { id: 1, issue: 'AC not cooling properly', status: 'in-progress', date: '25 Jul 2026' },
-    { id: 2, issue: 'Water tap leaking', status: 'resolved', date: '10 Jul 2026' },
-  ])
+  const [myRequests, setMyRequests] = useState<Array<{ id: number; issue: string; status: string; date: string }>>([])
   const [showNewReq, setShowNewReq] = useState(false)
   const [newReq, setNewReq] = useState({ issue: '', description: '', priority: 'Medium' })
-  const submitRequest = () => {
+  const submitRequest = async () => {
     if (!newReq.issue.trim()) return
-    setMyRequests(r => [...r, { id: Date.now(), issue: newReq.issue, status: 'open', date: '31 Jul 2026' }])
-    setNewReq({ issue: '', description: '', priority: 'Medium' })
-    setShowNewReq(false)
+    if (!leases.length) {
+      setDashboardError('You need an active lease before creating a maintenance request.')
+      return
+    }
+
+    const primaryLease = leases[0]
+    try {
+      await submitMaintenanceRequest({
+        propertyId: primaryLease.propertyId,
+        landlordId: primaryLease.landlordId || '',
+        issue: newReq.issue,
+        description: newReq.description,
+        priority: (newReq.priority as 'Low' | 'Medium' | 'High') || 'Medium',
+        category: 'General',
+      })
+
+      const refreshed = await getMaintenanceRequests().catch(() => [])
+      setMyRequests(Array.isArray(refreshed) ? refreshed.map((request) => ({
+        id: Number(request.id ?? Date.now()),
+        issue: request.issue,
+        status: request.status,
+        date: request.createdAt ? new Date(request.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A',
+      })) : [])
+      setNewReq({ issue: '', description: '', priority: 'Medium' })
+      setShowNewReq(false)
+      setDashboardError('')
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Maintenance request submission failed.')
+    }
   }
 
   // ── Pay rent ─────────────────────────────────────────────────────────────────
@@ -289,13 +330,17 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
     }, 900)
   }
 
-  // ── Nav ──────────────────────────────────────────────────────────────────────
-  const receipts = [
-    { month: 'Jul 2026', amount: 4200, paid: false },
-    { month: 'Jun 2026', amount: 4200, paid: true },
-    { month: 'May 2026', amount: 4200, paid: true },
-    { month: 'Apr 2026', amount: 4200, paid: true },
-  ]
+  useEffect(() => {
+    if (!rentSummary.length) return
+    const nextReceipts = rentSummary
+      .map((item) => ({
+        month: item.month,
+        amount: item.amount,
+        paid: item.paid || item.status === 'paid',
+      }))
+      .filter((item) => item.amount > 0)
+    setReceipts(nextReceipts.length ? nextReceipts : [])
+  }, [rentSummary])
 
   const statusBadge = (status: AppStatus) => {
     if (status === 'under-review') return <Badge variant="warning">Under Review</Badge>

@@ -3,7 +3,7 @@ import type { Listing } from '../../types'
 import { listings, rentTransactions } from '../../data'
 import ListingDetailPage from '../../components/ListingDetail'
 import NotificationBell from '../../components/NotificationBell'
-import { getApplications, getMyListings, getProfile } from '../../lib/landlordApi'
+import { createListing, getApplications, getMyListings, getProfile, reviewApplication, updateListing } from '../../lib/landlordApi'
 import { landlordNotifs } from './constants'
 import LandlordSidebarNav, { type LandlordPage } from './Sidebar'
 import type { MaintReq, RequestItem, ChatMsg, MaintStage } from './types'
@@ -46,13 +46,22 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
         if (profileResult) {
           setLandlordProfile(profileResult)
         }
-        if (Array.isArray(listingsResult) && listingsResult.length > 0) {
+        if (Array.isArray(listingsResult)) {
           setMyListings(listingsResult)
         }
         if (Array.isArray(applicationsResult)) {
-          setRequests(prev => prev.map(item => ({
-            ...item,
-            status: item.status,
+          setRequests(applicationsResult.map((application) => ({
+            id: Number(application.id ?? Date.now()),
+            student: `Student ${application.studentId}`,
+            studentId: String(application.studentId ?? 'N/A'),
+            dept: 'UIU Student',
+            phone: 'N/A',
+            moveIn: 'Flexible',
+            employment: 'Student',
+            message: application.message ?? 'New application submitted.',
+            listing: `Property ${application.propertyId}`,
+            date: application.createdAt ? new Date(application.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A',
+            status: ['accepted', 'rejected', 'cancelled'].includes(application.status) ? (application.status === 'accepted' ? 'approved' : 'rejected') : 'pending',
           })))
         }
       } catch (error) {
@@ -158,6 +167,99 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
   const [maxTenants, setMaxTenants] = useState('')
   const [parkingAvail, setParkingAvail] = useState<'none' | 'motorcycle' | 'car' | 'both'>('none')
 
+  const refreshMyListings = async () => {
+    const nextListings = await getMyListings().catch(() => [])
+    setMyListings(nextListings)
+  }
+
+  const refreshApplications = async () => {
+    const nextApplications = await getApplications().catch(() => [])
+    setRequests(nextApplications.map((application) => ({
+      id: Number(application.id ?? Date.now()),
+      student: `Student ${application.studentId}`,
+      studentId: String(application.studentId ?? 'N/A'),
+      dept: 'UIU Student',
+      phone: 'N/A',
+      moveIn: 'Flexible',
+      employment: 'Student',
+      message: application.message ?? 'New application submitted.',
+      listing: `Property ${application.propertyId}`,
+      date: application.createdAt ? new Date(application.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A',
+      status: ['accepted', 'rejected', 'cancelled'].includes(application.status) ? (application.status === 'accepted' ? 'approved' : 'rejected') : 'pending',
+    })))
+  }
+
+  const handleAddListing = async () => {
+    if (!form.title.trim() || !form.price || !addrForm.street.trim()) {
+      setDashboardError('Please complete the listing title, price, and address before publishing.')
+      return
+    }
+
+    try {
+      const payload = {
+        title: form.title.trim(),
+        description: form.description.trim() || 'Available UIU-area rental property.',
+        type: (form.type || 'Single').toLowerCase() as 'apartment' | 'house' | 'room' | 'studio' | 'duplex' | 'sublet',
+        priceBDT: Number(form.price),
+        bedrooms: roomCounts.bedroom || 1,
+        roommateCapacity: Number(maxTenants || 1),
+        parkingAvailable: parkingAvail !== 'none',
+        facilities,
+        address: {
+          line1: addrForm.street || 'UIU Area',
+          area: addrForm.area || 'UIU Area',
+          city: addrForm.city || 'Dhaka',
+          district: addrForm.district || 'Dhaka',
+          latitude: mapPin?.x ? Number(mapPin.x) / 100 : 23.8148,
+          longitude: mapPin?.y ? Number(mapPin.y) / 100 : 90.4256,
+        },
+        status: 'approved',
+      }
+
+      await createListing(payload)
+      await refreshMyListings()
+      setPage('listings')
+      setDashboardError('')
+      setForm({ title: '', type: 'Single', price: '', description: '' })
+      setAddrForm({ street: '', area: '', city: 'Dhaka', district: 'Dhaka', postal: '' })
+      setFacilities([])
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Listing creation failed.')
+    }
+  }
+
+  const handleUpdateListing = async () => {
+    if (editListingId === null) return
+    try {
+      const payload = {
+        title: editForm.title.trim(),
+        description: editForm.description.trim() || 'Updated UIU-area rental property.',
+        type: (editForm.type || 'Single').toLowerCase() as 'apartment' | 'house' | 'room' | 'studio' | 'duplex' | 'sublet',
+        priceBDT: Number(editForm.price || 0),
+        bedrooms: roomCounts.bedroom || 1,
+        roommateCapacity: Number(maxTenants || 1),
+        parkingAvailable: parkingAvail !== 'none',
+        facilities: editFacilities,
+        address: {
+          line1: editAddrForm.street || 'UIU Area',
+          area: editAddrForm.area || 'UIU Area',
+          city: editAddrForm.city || 'Dhaka',
+          district: editAddrForm.district || 'Dhaka',
+          latitude: editMapPin?.x ? Number(editMapPin.x) / 100 : 23.8148,
+          longitude: editMapPin?.y ? Number(editMapPin.y) / 100 : 90.4256,
+        },
+        status: 'approved',
+      }
+
+      await updateListing(editListingId, payload)
+      await refreshMyListings()
+      setPage('listings')
+      setDashboardError('')
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Listing update failed.')
+    }
+  }
+
   const updateRoomCount = (room: string, count: number) => {
     const n = Math.max(0, count)
     setRoomCounts(c => ({ ...c, [room]: n }))
@@ -196,8 +298,24 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
   ])
   const [expandedRequestId, setExpandedRequestId] = useState<number | null>(null)
   const pendingRequests = requests.filter(r => r.status === 'pending').length
-  const approveRequest = (id: number) => setRequests(rs => rs.map(r => r.id === id ? { ...r, status: 'approved' } : r))
-  const rejectRequest  = (id: number) => setRequests(rs => rs.map(r => r.id === id ? { ...r, status: 'rejected' } : r))
+  const approveRequest = async (id: number) => {
+    try {
+      await reviewApplication(id, { status: 'accepted' })
+      setRequests(rs => rs.map(r => r.id === id ? { ...r, status: 'approved' } : r))
+      setDashboardError('')
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Unable to approve this application.')
+    }
+  }
+  const rejectRequest = async (id: number) => {
+    try {
+      await reviewApplication(id, { status: 'rejected' })
+      setRequests(rs => rs.map(r => r.id === id ? { ...r, status: 'rejected' } : r))
+      setDashboardError('')
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Unable to reject this application.')
+    }
+  }
 
   // ── Maintenance ──────────────────────────────────────────────────────────────
   const [mReqs, setMReqs] = useState<MaintReq[]>([
@@ -490,6 +608,7 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
               setShowDiscardAddConfirm={setShowDiscardAddConfirm}
               setPage={setPage}
               onPin={handleMapPin}
+              onSubmit={handleAddListing}
             />
           )}
 
@@ -521,6 +640,7 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
               setShowDiscardEditConfirm={setShowDiscardEditConfirm}
               setShowRemoveListingConfirm={setShowRemoveListingConfirm}
               setPage={setPage}
+              onSubmit={handleUpdateListing}
             />
           )}
 
