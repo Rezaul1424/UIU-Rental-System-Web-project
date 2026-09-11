@@ -8,6 +8,10 @@ const migration = readFileSync(
   path.join(databaseRoot, 'migrations', '001_shared_entities.sql'),
   'utf8',
 );
+const authMigration = readFileSync(
+  path.join(databaseRoot, 'migrations', '002_auth_workflow_entities.sql'),
+  'utf8',
+);
 const seed = readFileSync(path.join(databaseRoot, 'seed.sql'), 'utf8');
 
 const requiredBaseTables = [
@@ -68,5 +72,15 @@ describe('Module 5 database artifacts', () => {
     expect(seed).toContain("'paid'");
     expect(seed).toContain('ON DUPLICATE KEY UPDATE');
     expect(seed).toContain('WHERE NOT EXISTS');
+  });
+
+  it('defines persistent authentication, maintenance, rent, and receipt entities', () => {
+    for (const table of ['auth_sessions', 'password_reset_tokens', 'maintenance_comments', 'maintenance_attachments', 'rent_obligations', 'payment_receipts']) {
+      expect(authMigration).toContain(`CREATE TABLE IF NOT EXISTS \`${table}\``);
+    }
+
+    expect(authMigration).toContain('`token_hash` CHAR(64) NOT NULL UNIQUE');
+    expect(authMigration).toContain('UNIQUE KEY `uk_rent_obligation_month`');
+    expect(authMigration).toContain('`receipt_number` VARCHAR(50) NOT NULL UNIQUE');
   });
 });

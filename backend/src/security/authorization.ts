@@ -1,6 +1,5 @@
-import jwt from 'jsonwebtoken';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
-import { getUserByEmail, type AuthUser } from '../auth/auth.js';
+import { requireAuth as authenticate, type AuthUser } from '../auth/auth.js';
 import { AppError } from '../errors/AppError.js';
 
 export type Role = 'admin' | 'landlord' | 'student' | 'guest';
@@ -44,39 +43,7 @@ export function buildRateLimiter(options: { windowMs?: number; maxRequests?: num
 }
 
 export function requireAuth(req: Request, _res: Response, next: NextFunction): void {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
-  }
-
-  const token = authHeader.replace('Bearer ', '');
-
-  try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret-change-me') as {
-      sub?: string;
-      email?: string;
-      role?: Role;
-    };
-
-    const user = payload.email ? getUserByEmail(payload.email) : undefined;
-    if (!user) {
-      throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
-    }
-
-    if (user.status === 'suspended') {
-      throw new AppError(403, 'ACCOUNT_SUSPENDED', 'This account has been suspended');
-    }
-
-    if (user.status === 'deactivated') {
-      throw new AppError(403, 'ACCOUNT_DEACTIVATED', 'This account is no longer active');
-    }
-
-    req.user = user;
-    next();
-  } catch {
-    throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
-  }
+  authenticate(req, _res, next);
 }
 
 export function requireRole(role: Role | Role[]): RequestHandler {

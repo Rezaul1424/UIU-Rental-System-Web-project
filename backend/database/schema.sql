@@ -45,7 +45,7 @@ CREATE TABLE `users` (
   `department` VARCHAR(50) DEFAULT NULL,
   `nid_number` VARCHAR(50) DEFAULT NULL,
   `is_verified` BOOLEAN NOT NULL DEFAULT FALSE,
-  `status` ENUM('active', 'pending', 'suspended') NOT NULL DEFAULT 'active',
+  `status` ENUM('active', 'pending', 'suspended', 'deactivated') NOT NULL DEFAULT 'active',
   `avatar_url` VARCHAR(500) DEFAULT NULL,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

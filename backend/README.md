@@ -174,6 +174,11 @@ npm run db:seed
 The migration runner records applied files in `_schema_migrations`. The SQL files are
 idempotent, and seed statements use deterministic identifiers or guarded inserts.
 
+Authentication uses the MySQL `users`, `auth_sessions`, and
+`password_reset_tokens` tables outside test mode. Logout revokes the persisted
+session, password-reset tokens are stored hashed and single-use, and the JWT
+secret must be at least 32 characters in deployed environments.
+
 For a manual first-time import, the baseline schema and its original fixtures are also
 available through MySQL CLI or MySQL Workbench:
 
