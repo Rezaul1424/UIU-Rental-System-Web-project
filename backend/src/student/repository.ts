@@ -250,9 +250,9 @@ export const studentRepository: StudentRepository = {
     }
 
     const userId = Number(studentId);
-    const propertyId = Number(listingId);
-    if (!Number.isFinite(userId) || !Number.isFinite(propertyId)) return false;
+    if (!Number.isFinite(userId)) return false;
 
+    const propertyId = await resolvePropertyId(listingId);
     const [result] = await db.execute('DELETE FROM favorites WHERE student_id = ? AND property_id = ?', [userId, propertyId]);
     return (result as { affectedRows?: number }).affectedRows !== undefined && (result as { affectedRows: number }).affectedRows > 0;
   },
@@ -435,6 +435,14 @@ export const studentRepository: StudentRepository = {
     }
 
     const propertyId = await resolvePropertyId(payload.propertyId);
+    const [propertyRows] = await db.query<RowDataPacket[]>('SELECT landlord_id FROM properties WHERE id = ? LIMIT 1', [propertyId]);
+    const property = propertyRows[0];
+    if (!property) throw new AppError(404, 'LISTING_NOT_FOUND', 'Listing does not exist');
+
+    if (Number(property.landlord_id) !== landlordId) {
+      throw new AppError(400, 'INVALID_LANDLORD', 'The selected landlord does not own this property');
+    }
+
     const [result] = await db.execute('INSERT INTO maintenance_requests (property_id, student_id, landlord_id, issue, description, priority, category, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [propertyId, userId, landlordId, payload.issue, payload.description ?? null, payload.priority, payload.category ?? null, 'open']);
     const insertId = Number((result as { insertId?: number }).insertId ?? 0);
 
