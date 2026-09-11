@@ -12,6 +12,7 @@ import {
   requireAuth,
 } from '../auth/auth.js';
 import { AppError } from '../errors/AppError.js';
+import { buildRateLimiter } from '../security/authorization.js';
 
 const registerSchema = z.object({
   name: z.string().trim().min(2),
@@ -41,6 +42,7 @@ const deactivateSchema = z.object({
 });
 
 const router = Router();
+const loginRateLimiter = buildRateLimiter({ windowMs: 60_000, maxRequests: 5 });
 
 router.post(
   '/register',
@@ -58,6 +60,7 @@ router.post(
 
 router.post(
   '/login',
+  loginRateLimiter,
   asyncHandler(async (req, res) => {
     const data = loginSchema.parse(req.body);
     const user = verifyCredentials(data.email, data.password);

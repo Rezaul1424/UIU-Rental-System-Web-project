@@ -3,6 +3,7 @@ import morgan from 'morgan';
 import { env } from './config/env.js';
 import { buildCorsMiddleware } from './plugins/cors.js';
 import { errorHandler, notFoundHandler } from './plugins/error-handler.js';
+import { applySecurityHeaders } from './security/authorization.js';
 import { healthRouter } from './routes/health.js';
 import { v1Router } from './routes/index.js';
 
@@ -46,6 +47,7 @@ export function buildApp(): Express {
   // line, better suited for production log aggregation.
   app.use(morgan(env.NODE_ENV === 'development' ? 'dev' : 'combined'));
 
+  app.use(applySecurityHeaders);
   app.use(buildCorsMiddleware());
   app.use(express.json());
 
