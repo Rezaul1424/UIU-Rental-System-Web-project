@@ -62,3 +62,16 @@ pnpm-debug.log*
 .AppleDouble
 .LSOverride
 
+# Local planning documents
+BACKEND_PLAN.md
+BACKEND_IMPLEMENTATION_DETAILS.md
+
+# Local viva documentation (not committed)
+viva-docs/
+
+#backend
+/backend/node_modules/
+/backend/dist/
+/backend/.env
+/backend/*.log
+/backend/coverage/

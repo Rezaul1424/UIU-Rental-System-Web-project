@@ -13,6 +13,8 @@ export default function AuthModal({ mode, onClose, onAuth }: { mode: 'login' | '
   const [forgotEmail, setForgotEmail] = useState('')
   const [forgotEmailError, setForgotEmailError] = useState('')
   const [forgotSent, setForgotSent] = useState(false)
+  const [authError, setAuthError] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const roleOptions: { id: Role; label: string; icon: string }[] = [
     { id: 'student', label: 'Student', icon: '🎓' },
@@ -20,10 +22,32 @@ export default function AuthModal({ mode, onClose, onAuth }: { mode: 'login' | '
     { id: 'admin', label: 'Admin', icon: '🛡️' },
   ]
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const displayName = name || (tab === 'login' ? (role === 'admin' ? 'Admin User' : role === 'landlord' ? 'Rahman Faruk' : 'Tanvir Ahmed') : name)
-    onAuth(role, displayName || 'User')
+    setAuthError('')
+    setIsSubmitting(true)
+
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/api/v1/auth/${tab === 'login' ? 'login' : 'register'}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(tab === 'login'
+          ? { email, password }
+          : { name, email, password, studentId: role === 'student' ? studentId : undefined, role }),
+      })
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error?.message || 'Authentication failed')
+      }
+
+      localStorage.setItem('uiu_auth_token', result.token)
+      onAuth(result.user.role, result.user.name)
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Authentication failed')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const handleForgotSubmit = (e: React.FormEvent) => {
@@ -184,11 +208,15 @@ export default function AuthModal({ mode, onClose, onAuth }: { mode: 'login' | '
             </div>
           )}
 
+          {authError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2" role="alert">{authError}</p>}
+
           <button
             type="submit"
+            disabled={isSubmitting}
+            aria-busy={isSubmitting}
             className="w-full bg-[#1a1a18] text-white font-semibold py-3 rounded-xl hover:bg-[#333] active:bg-[#222] transition-colors text-sm shadow-sm"
           >
-            {tab === 'login' ? 'Sign In' : 'Create Account'}
+            {isSubmitting ? 'Please wait...' : tab === 'login' ? 'Sign In' : 'Create Account'}
           </button>
 
           <p className="text-center text-xs text-gray-500">
