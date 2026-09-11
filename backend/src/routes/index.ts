@@ -1,15 +1,16 @@
-import type { FastifyInstance } from 'fastify';
-import { healthRoutes } from './health.js';
+import { Router } from 'express';
+import { healthRouter } from './health.js';
 
 /**
- * All API routes live under /api/v1. Bumping to /api/v2 later means adding
- * a new registerRoutes-style function and mounting it alongside this one —
- * v1 consumers keep working unchanged.
+ * All v1 API routes are mounted here and registered under /api/v1 in
+ * app.ts. Bumping to /api/v2 later means creating a new router here and
+ * mounting it alongside this one — v1 consumers keep working unchanged.
  */
-export async function registerV1Routes(app: FastifyInstance): Promise<void> {
-  await app.register(healthRoutes);
+const v1Router = Router();
 
-  // Future modules register their routes here, e.g.:
-  // await app.register(authRoutes);
-  // await app.register(listingRoutes, { prefix: '/listings' });
-}
+v1Router.use(healthRouter);
+
+// Future modules register their routers here, e.g.:
+// v1Router.use('/listings', listingsRouter);
+
+export { v1Router };

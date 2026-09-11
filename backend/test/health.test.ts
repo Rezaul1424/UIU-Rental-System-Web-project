@@ -1,62 +1,39 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import type { FastifyInstance } from 'fastify';
+import { describe, it, expect } from 'vitest';
+import request from 'supertest';
 import { buildApp } from '../src/app.js';
 
+const app = buildApp();
+
 describe('GET /health', () => {
-  let app: FastifyInstance;
-
-  beforeAll(async () => {
-    app = await buildApp();
-    await app.ready();
-  });
-
-  afterAll(async () => {
-    await app.close();
-  });
-
   it('returns 200 with an ok status', async () => {
-    const response = await app.inject({ method: 'GET', url: '/health' });
+    const response = await request(app).get('/health');
 
-    expect(response.statusCode).toBe(200);
-    const body = response.json();
-    expect(body.status).toBe('ok');
-    expect(typeof body.uptimeSeconds).toBe('number');
-    expect(typeof body.timestamp).toBe('string');
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe('ok');
+    expect(typeof response.body.uptimeSeconds).toBe('number');
+    expect(typeof response.body.timestamp).toBe('string');
   });
 });
 
 describe('GET /api/v1/health', () => {
-  let app: FastifyInstance;
-
-  beforeAll(async () => {
-    app = await buildApp();
-    await app.ready();
-  });
-
-  afterAll(async () => {
-    await app.close();
-  });
-
   it('is reachable under the versioned prefix too', async () => {
-    const response = await app.inject({ method: 'GET', url: '/api/v1/health' });
-    expect(response.statusCode).toBe(200);
-    expect(response.json().status).toBe('ok');
+    const response = await request(app).get('/api/v1/health');
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe('ok');
   });
 });
 
 describe('unknown route', () => {
   it('returns a consistent 404 JSON error shape', async () => {
-    const app = await buildApp();
-    const response = await app.inject({ method: 'GET', url: '/nope' });
+    const response = await request(app).get('/nope');
 
-    expect(response.statusCode).toBe(404);
-    expect(response.json()).toEqual({
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({
       error: {
         code: 'ROUTE_NOT_FOUND',
         message: 'Route GET /nope not found',
         statusCode: 404,
       },
     });
-    await app.close();
   });
 });
