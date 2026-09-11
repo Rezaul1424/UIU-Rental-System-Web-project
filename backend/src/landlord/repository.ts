@@ -382,7 +382,7 @@ export const landlordRepository: LandlordRepository = {
     if (!existing[0]) throw new AppError(403, 'FORBIDDEN', 'You do not own this listing');
 
     const updates: string[] = [];
-    const values: unknown[] = [];
+    const values: Array<string | number | null> = [];
     if (payload.title !== undefined) { updates.push('title = ?'); values.push(payload.title); }
     if (payload.description !== undefined) { updates.push('description = ?'); values.push(payload.description); }
     if (payload.type !== undefined) { updates.push('type = ?'); values.push(toDbListingType(payload.type)); }
@@ -398,7 +398,13 @@ export const landlordRepository: LandlordRepository = {
       updates.push('map_pin_x = ?'); values.push(payload.address.latitude);
       updates.push('map_pin_y = ?'); values.push(payload.address.longitude);
     }
-    if (updates.length === 0) return await this.getMyListings(landlordId).then((list) => list.find((item) => item.id === listingId) ?? { ...payload, id: listingId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    if (updates.length === 0) {
+      const [rows] = await db.query<DbPropertyRow[]>('SELECT * FROM properties WHERE id = ? AND landlord_id = ? LIMIT 1', [numericListingId, landlordNumericId]);
+      const row = rows[0];
+      if (!row) throw new AppError(404, 'LISTING_NOT_FOUND', 'Listing does not exist');
+
+      return normalizeListing(row, await getAmenitiesForProperties([row.id]).then((facilityMap) => facilityMap.get(row.id) ?? []));
+    }
 
     values.push(numericListingId, landlordNumericId);
     await db.execute(`UPDATE properties SET ${updates.join(', ')} WHERE id = ? AND landlord_id = ?`, values);

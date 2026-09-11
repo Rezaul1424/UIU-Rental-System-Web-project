@@ -318,7 +318,8 @@ export const studentRepository: StudentRepository = {
     const property = propertyRows[0];
     if (!property) throw new AppError(404, 'LISTING_NOT_FOUND', 'Listing does not exist');
 
-    const [existing] = await db.query<RowDataPacket[]>('SELECT id FROM applications WHERE student_id = ? AND property_id = ? LIMIT 1', [userId, propertyId]);
+    const [existingRows] = await db.query<RowDataPacket[]>('SELECT id FROM applications WHERE student_id = ? AND property_id = ? LIMIT 1', [userId, propertyId]);
+    const existing = existingRows[0] as RowDataPacket | undefined;
     if (existing?.id) throw new AppError(409, 'DUPLICATE_APPLICATION', 'You already submitted an application for this property');
 
     const [result] = await db.execute('INSERT INTO applications (property_id, student_id, landlord_id, student_card_no, contact_phone, move_in_date, employment, message, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [propertyId, userId, property.landlord_id, payload.studentCardNo ?? null, payload.contactPhone ?? null, payload.moveInDate, payload.employment ?? 'Student', payload.message ?? null, 'under-review']);

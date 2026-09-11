@@ -5,7 +5,6 @@ import { requireAuth, requireRole } from '../security/authorization.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import {
   StudentApplicationPayloadSchema,
-  StudentFavoritePayloadSchema,
   StudentMaintenanceRequestSchema,
   StudentProfileSchema,
 } from '../contracts/student.js';
