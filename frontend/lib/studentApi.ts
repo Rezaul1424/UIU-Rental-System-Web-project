@@ -1,12 +1,28 @@
 import { api } from './api';
 
 const toListingId = (value: unknown) => {
-  if (typeof value === 'number') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string') {
-    const match = value.match(/\d+/);
+    const cleaned = value.trim();
+    if (!cleaned) return 0;
+    const match = cleaned.match(/\d+/);
     return match ? Number(match[0]) : 0;
   }
   return 0;
+};
+
+const toDateString = (value?: string | Date | null) => {
+  if (!value) return 'N/A';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return 'N/A';
+  return date.toLocaleDateString();
+};
+
+const normalizeStatus = (status?: unknown): StudentApplication['status'] => {
+  const safeStatus = typeof status === 'string' ? status.toLowerCase() : 'under-review';
+  return ['under-review', 'accepted', 'rejected', 'cancelled'].includes(safeStatus)
+    ? safeStatus as StudentApplication['status']
+    : 'under-review';
 };
 
 export type StudentProfile = {
@@ -15,17 +31,21 @@ export type StudentProfile = {
   email: string;
   studentId?: string;
   role: 'student' | 'landlord' | 'admin' | 'guest';
-  status: string;
+  status?: string;
 };
 
 export const getProfile = () => api.get<StudentProfile>('/api/v1/student/profile');
 
 export const getFavorites = async (): Promise<number[]> => {
-  const favorites = await api.get<Array<{ listingId?: string | number; id?: string | number; listing?: { id?: string | number } }>>('/api/v1/student/favorites');
-  if (!Array.isArray(favorites)) return [];
+  const payload = await api.get<Array<any> | { data?: Array<any> }>('/api/v1/student/favorites');
+  const favorites = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
 
   return favorites
-    .map((favorite) => toListingId(favorite.listingId ?? favorite.id ?? favorite.listing?.id))
+    .map((favorite) => {
+      const listingId =
+        toListingId(favorite.listingId ?? favorite.propertyId ?? favorite.id ?? favorite.listing?.id ?? favorite.listing?.propertyId);
+      return listingId;
+    })
     .filter((id) => id > 0);
 };
 
@@ -53,18 +73,17 @@ export type StudentApplication = {
 };
 
 export const getApplications = async (): Promise<StudentApplication[]> => {
-  const applications = await api.get<Array<any>>('/api/v1/student/applications');
-
-  if (!Array.isArray(applications)) return [];
+  const payload = await api.get<Array<any> | { data?: Array<any> }>('/api/v1/student/applications');
+  const applications = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
 
   return applications.map((application) => ({
     id: application.id ?? application.applicationId,
-    listingId: toListingId(application.propertyId ?? application.listingId ?? application.listing?.id),
-    propertyId: application.propertyId ?? application.listingId,
-    landlordId: application.landlordId,
-    status: application.status ?? 'under-review',
-    date: application.createdAt ? new Date(application.createdAt).toLocaleDateString() : 'N/A',
-    createdAt: application.createdAt,
+    listingId: toListingId(application.listingId ?? application.propertyId ?? application.listing?.id ?? application.listing?.propertyId),
+    propertyId: String(application.propertyId ?? application.listingId ?? application.listing?.id ?? ''),
+    landlordId: application.landlordId ?? application.landlord?.id,
+    status: normalizeStatus(application.status),
+    date: toDateString(application.createdAt ?? application.updatedAt),
+    createdAt: application.createdAt ?? application.updatedAt,
     message: application.message,
     moveInDate: application.moveInDate,
     employment: application.employment,

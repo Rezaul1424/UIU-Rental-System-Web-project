@@ -3,7 +3,7 @@ import type { Listing } from '../../types'
 import { listings } from '../../data'
 import { Badge } from '../../components/ui'
 import NotificationBell from '../../components/NotificationBell'
-import { addFavorite, getApplications, getFavorites, getProfile, removeFavorite, submitApplication } from '../../lib/studentApi'
+import { addFavorite, getApplications, getFavorites, getProfile, removeFavorite, submitApplication as submitStudentApplication, type StudentApplication } from '../../lib/studentApi'
 import { studentNotifs } from './constants'
 import StudentSidebarNav from './Sidebar'
 import OverviewPage from './pages/OverviewPage'
@@ -22,7 +22,7 @@ import type { StudentPage } from './types'
 
 export default function StudentDashboard({ userName, onSignOut }: { userName: string; onSignOut: () => void }) {
   type AppStatus = 'under-review' | 'accepted' | 'rejected' | 'cancelled'
-  type Application = { listingId: number; status: AppStatus; date: string }
+  type Application = StudentApplication & { status: AppStatus }
   type Review = { id: number; landlord: string; property: string; listingId: number; landlordStars: number; propStars: number; text: string; date: string }
   type ChatMsg = { from: 'student' | 'landlord'; text: string }
 
@@ -123,8 +123,13 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
     setApplications(prev => prev.map(a => a.listingId === listingId ? { ...a, status: 'cancelled' } : a))
 
   const [appForm, setAppForm] = useState({ studentId: '', phone: '', moveIn: '', message: '', employment: 'Student' })
-  const submitApplication = async () => {
+  const handleSubmitApplication = async () => {
     if (!applyListing) return
+
+    if (hasApplied(applyListing.id)) {
+      setDashboardError('You already submitted an application for this listing.')
+      return
+    }
 
     try {
       await submitStudentApplication({
@@ -426,7 +431,7 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
               applyListing={applyListing}
               appForm={appForm}
               setAppForm={setAppForm}
-              submitApplication={submitApplication}
+              submitApplication={handleSubmitApplication}
               onBack={setPage}
             />
           )}
