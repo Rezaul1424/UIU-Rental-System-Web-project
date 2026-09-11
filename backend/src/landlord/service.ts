@@ -20,6 +20,9 @@ export const landlordService = {
   async updateListing(landlordId: string, listingId: string, payload: Partial<LandlordListingPayload>): Promise<LandlordListingPayload & { id: string; createdAt: string; updatedAt: string }> {
     return landlordRepository.updateListing(landlordId, listingId, payload);
   },
+  async deleteListing(landlordId: string, listingId: string): Promise<boolean> {
+    return landlordRepository.deleteListing(landlordId, listingId);
+  },
   async getApplications(landlordId: string): Promise<Array<{ id: string; propertyId: string; studentId: string; landlordId: string; status: 'under-review' | 'accepted' | 'rejected' | 'cancelled'; createdAt: string }>> {
     return landlordRepository.getApplications(landlordId);
   },

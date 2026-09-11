@@ -63,6 +63,16 @@ router.get('/applications', asyncHandler(async (req, res) => {
   res.json({ data: applications });
 }));
 
+router.patch('/applications/:applicationId/status', asyncHandler(async (req, res) => {
+  const currentUser = req.user;
+  if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+
+  const applicationId = z.string().trim().min(1).parse(req.params.applicationId);
+  const payload = ApplicationReviewPayloadSchema.parse({ ...req.body, applicationId });
+  const result = await landlordService.reviewApplication(currentUser.id, applicationId, payload);
+  res.json({ data: result });
+}));
+
 router.patch('/applications/:applicationId/review', asyncHandler(async (req, res) => {
   const currentUser = req.user;
   if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
@@ -97,6 +107,16 @@ router.patch('/maintenance/:requestId/status', asyncHandler(async (req, res) => 
   const payload = MaintenanceUpdatePayloadSchema.parse({ ...req.body, requestId });
   const result = await landlordService.updateMaintenanceStatus(currentUser.id, requestId, payload);
   res.json({ data: result });
+}));
+
+router.delete('/listings/:listingId', asyncHandler(async (req, res) => {
+  const currentUser = req.user;
+  if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+
+  const listingId = z.string().trim().min(1).parse(req.params.listingId);
+  const deleted = await landlordService.deleteListing(currentUser.id, listingId);
+  if (!deleted) throw new AppError(404, 'LISTING_NOT_FOUND', 'Listing does not exist');
+  res.status(204).send();
 }));
 
 export { router as landlordRouter };
