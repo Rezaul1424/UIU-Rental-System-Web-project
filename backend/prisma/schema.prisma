@@ -1,0 +1,522 @@
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  student
+  landlord
+  admin
+}
+
+enum UserStatus {
+  active
+  pending
+  suspended
+  deactivated
+}
+
+enum PropertyType {
+  Single
+  Shared
+  Mess
+  Sublet
+}
+
+enum PropertyStatus {
+  available
+  occupied
+  maintenance
+}
+
+enum ApplicationStatus {
+  under_review @map("under-review")
+  accepted
+  rejected
+  cancelled
+}
+
+enum PaymentStatus {
+  pending
+  paid
+  overdue
+}
+
+enum Priority {
+  Low
+  Medium
+  High
+}
+
+enum MaintenanceStatus {
+  open
+  in_progress @map("in-progress")
+  resolved
+}
+
+enum ComplaintStatus {
+  Submitted
+  Under_Review @map("Under Review")
+  Responded
+  Resolved
+  Closed
+}
+
+model User {
+  id           Int        @id @default(autoincrement())
+  role         Role       @default(student)
+  name         String     @db.VarChar(100)
+  email        String     @unique @db.VarChar(150)
+  passwordHash String     @map("password_hash") @db.VarChar(255)
+  phone        String?    @db.VarChar(20)
+  studentId    String?    @map("student_id") @db.VarChar(30)
+  department   String?    @db.VarChar(50)
+  nidNumber    String?    @map("nid_number") @db.VarChar(50)
+  isVerified   Boolean    @default(false) @map("is_verified")
+  status       UserStatus @default(active)
+  avatarUrl    String?    @map("avatar_url") @db.VarChar(500)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  // Relations
+  properties          Property[]
+  applicationsStudent Application[]        @relation("StudentApplications")
+  applicationsLandlord Application[]       @relation("LandlordApplications")
+  paymentsStudent     RentPayment[]        @relation("StudentPayments")
+  paymentsLandlord    RentPayment[]        @relation("LandlordPayments")
+  maintenanceStudent  MaintenanceRequest[] @relation("StudentMaintenance")
+  maintenanceLandlord MaintenanceRequest[] @relation("LandlordMaintenance")
+  reviewsStudent      Review[]             @relation("StudentReviews")
+  reviewsLandlord     Review[]             @relation("LandlordReviews")
+  favorites           Favorite[]
+  chatSent            ChatMessage[]        @relation("SentMessages")
+  conversationsStudent Conversation[]      @relation("StudentConversations")
+  conversationsLandlord Conversation[]     @relation("LandlordConversations")
+  complaintsFiled     Complaint[]          @relation("ComplaintsFiled")
+  complaintsAgainst   Complaint[]          @relation("ComplaintsAgainst")
+  complaintReplies    ComplaintReply[]
+  notifications       Notification[]
+  leasesAsStudent     Lease[]              @relation("StudentLeases")
+  leasesAsLandlord    Lease[]              @relation("LandlordLeases")
+  auditEvents         AuditEvent[]         @relation("AuditActors")
+  authSessions        AuthSession[]
+  resetTokens         PasswordResetToken[]
+  maintenanceComments MaintenanceComment[]
+  maintenanceAttachments MaintenanceAttachment[]
+
+  @@map("users")
+}
+
+model Property {
+  id               Int            @id @default(autoincrement())
+  propertyCode     String         @unique @map("property_code") @db.VarChar(30)
+  landlordId       Int            @map("landlord_id")
+  title            String         @db.VarChar(255)
+  description      String?        @db.Text
+  type             PropertyType
+  price            Decimal        @db.Decimal(10, 2)
+  distanceKm       Decimal        @default(0.00) @map("distance_km") @db.Decimal(4, 2)
+  status           PropertyStatus @default(available)
+  totalSizeSqft    Int?           @map("total_size_sqft")
+  roommateCapacity Int            @default(1) @map("roommate_capacity")
+  parking          String         @default("Not Available") @db.VarChar(50)
+  bedroomCount     Int            @default(1) @map("bedroom_count")
+  livingCount      Int            @default(0) @map("living_count")
+  bathroomCount    Int            @default(1) @map("bathroom_count")
+  kitchenCount     Int            @default(1) @map("kitchen_count")
+  verandaCount     Int            @default(0) @map("veranda_count")
+  roomSizesJson    Json?          @map("room_sizes_json")
+  addressStreet    String?        @map("address_street") @db.VarChar(255)
+  addressArea      String?        @map("address_area") @db.VarChar(100)
+  addressCity      String         @default("Dhaka") @map("address_city") @db.VarChar(50)
+  addressPostal    String?        @map("address_postal") @db.VarChar(20)
+  mapPinX          Decimal        @default(50.00) @map("map_pin_x") @db.Decimal(5, 2)
+  mapPinY          Decimal        @default(50.00) @map("map_pin_y") @db.Decimal(5, 2)
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  landlord            User                 @relation(fields: [landlordId], references: [id], onDelete: Cascade)
+  images              PropertyImage[]
+  amenities           PropertyAmenity[]
+  applications        Application[]
+  payments            RentPayment[]
+  maintenanceRequests MaintenanceRequest[]
+  reviews             Review[]
+  favorites           Favorite[]
+  conversations       Conversation[]
+  complaints          Complaint[]
+  categoryId          Int?                 @map("category_id")
+  category            ListingCategory?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  address             Address?
+  rooms               PropertyRoom[]
+  leases              Lease[]
+
+  @@map("properties")
+}
+
+model ListingCategory {
+  id         Int        @id @default(autoincrement())
+  name       String     @unique @db.VarChar(80)
+  createdAt  DateTime   @default(now()) @map("created_at")
+  properties Property[]
+
+  @@map("listing_categories")
+}
+
+model Address {
+  id             Int      @id @default(autoincrement())
+  propertyId     Int      @unique @map("property_id")
+  street         String?  @db.VarChar(255)
+  area           String?  @db.VarChar(100)
+  city           String   @default("Dhaka") @db.VarChar(50)
+  postalCode     String?  @map("postal_code") @db.VarChar(20)
+  latitude       Decimal? @db.Decimal(10, 7)
+  longitude      Decimal? @db.Decimal(10, 7)
+  geocodeStatus  String   @default("pending") @map("geocode_status") @db.VarChar(20)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  property       Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([latitude, longitude])
+  @@map("addresses")
+}
+
+model PropertyRoom {
+  id         Int      @id @default(autoincrement())
+  propertyId Int      @map("property_id")
+  roomName   String   @map("room_name") @db.VarChar(50)
+  sizeSqft   Int?     @map("size_sqft")
+  createdAt  DateTime @default(now()) @map("created_at")
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([propertyId, roomName])
+  @@map("property_rooms")
+}
+
+model Lease {
+  id          Int      @id @default(autoincrement())
+  propertyId  Int      @map("property_id")
+  studentId   Int      @map("student_id")
+  landlordId  Int      @map("landlord_id")
+  status      String   @default("pending") @db.VarChar(20)
+  startDate   DateTime @map("start_date") @db.Date
+  endDate     DateTime? @map("end_date") @db.Date
+  monthlyRent Decimal  @map("monthly_rent") @db.Decimal(10, 2)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  student     User     @relation("StudentLeases", fields: [studentId], references: [id], onDelete: Restrict)
+  landlord    User     @relation("LandlordLeases", fields: [landlordId], references: [id], onDelete: Restrict)
+  obligations RentObligation[]
+
+  @@index([propertyId, status])
+  @@index([studentId, status])
+  @@index([landlordId, status])
+  @@map("leases")
+}
+
+model AuditEvent {
+  id              String   @id @db.Char(36)
+  actorId         Int?     @map("actor_id")
+  action          String   @db.VarChar(100)
+  resourceType    String   @map("resource_type") @db.VarChar(80)
+  resourceId      String   @map("resource_id") @db.VarChar(80)
+  previousState   Json?    @map("previous_state")
+  newState        Json?    @map("new_state")
+  requestMetadata Json?    @map("request_metadata")
+  createdAt       DateTime @default(now()) @map("created_at")
+  actor           User?    @relation("AuditActors", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([resourceType, resourceId])
+  @@index([actorId, createdAt])
+  @@map("audit_events")
+}
+
+model AuthSession {
+  id        String   @id @db.Char(36)
+  userId    Int      @map("user_id")
+  tokenHash String   @unique @map("token_hash") @db.Char(64)
+  expiresAt DateTime @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt, expiresAt])
+  @@map("auth_sessions")
+}
+
+model PasswordResetToken {
+  tokenHash String   @id @map("token_hash") @db.Char(64)
+  userId    Int      @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, usedAt, expiresAt])
+  @@map("password_reset_tokens")
+}
+
+model MaintenanceComment {
+  id                   Int               @id @default(autoincrement())
+  maintenanceRequestId Int               @map("maintenance_request_id")
+  authorId             Int               @map("author_id")
+  message              String            @db.Text
+  createdAt            DateTime          @default(now()) @map("created_at")
+  request              MaintenanceRequest @relation(fields: [maintenanceRequestId], references: [id], onDelete: Cascade)
+  author               User              @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([maintenanceRequestId, createdAt])
+  @@map("maintenance_comments")
+}
+
+model MaintenanceAttachment {
+  id                   Int               @id @default(autoincrement())
+  maintenanceRequestId Int               @map("maintenance_request_id")
+  uploadedBy           Int               @map("uploaded_by")
+  storageKey           String            @unique @map("storage_key") @db.VarChar(255)
+  mimeType             String            @map("mime_type") @db.VarChar(100)
+  sizeBytes            Int               @map("size_bytes") @db.UnsignedInt
+  createdAt            DateTime          @default(now()) @map("created_at")
+  request              MaintenanceRequest @relation(fields: [maintenanceRequestId], references: [id], onDelete: Cascade)
+  uploader             User              @relation(fields: [uploadedBy], references: [id], onDelete: Restrict)
+
+  @@index([maintenanceRequestId])
+  @@map("maintenance_attachments")
+}
+
+model RentObligation {
+  id             Int              @id @default(autoincrement())
+  leaseId        Int              @map("lease_id")
+  monthYear      String           @map("month_year") @db.Char(7)
+  amount         Decimal          @db.Decimal(10, 2)
+  dueDate        DateTime         @map("due_date") @db.Date
+  status         String           @default("pending") @db.VarChar(20)
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  lease          Lease            @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+  receipt        PaymentReceipt?
+
+  @@unique([leaseId, monthYear])
+  @@index([status, dueDate])
+  @@map("rent_obligations")
+}
+
+model PaymentReceipt {
+  id              Int            @id @default(autoincrement())
+  rentObligationId Int            @unique @map("rent_obligation_id")
+  receiptNumber   String         @unique @map("receipt_number") @db.VarChar(50)
+  issuedAt       DateTime       @default(now()) @map("issued_at")
+  obligation     RentObligation @relation(fields: [rentObligationId], references: [id], onDelete: Restrict)
+
+  @@map("payment_receipts")
+}
+
+model PropertyImage {
+  id         Int      @id @default(autoincrement())
+  propertyId Int      @map("property_id")
+  roomLabel  String   @default("General") @map("room_label") @db.VarChar(50)
+  imageUrl   String   @map("image_url") @db.VarChar(500)
+  isPrimary  Boolean  @default(false) @map("is_primary")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@map("property_images")
+}
+
+model Amenity {
+  id   Int     @id @default(autoincrement())
+  name String  @unique @db.VarChar(50)
+  icon String? @db.VarChar(50)
+
+  properties PropertyAmenity[]
+
+  @@map("amenities")
+}
+
+model PropertyAmenity {
+  propertyId Int @map("property_id")
+  amenityId  Int @map("amenity_id")
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  amenity  Amenity  @relation(fields: [amenityId], references: [id], onDelete: Cascade)
+
+  @@id([propertyId, amenityId])
+  @@map("property_amenities")
+}
+
+model Application {
+  id            Int               @id @default(autoincrement())
+  propertyId    Int               @map("property_id")
+  studentId     Int               @map("student_id")
+  landlordId    Int               @map("landlord_id")
+  studentCardNo String?           @map("student_card_no") @db.VarChar(30)
+  contactPhone  String?           @map("contact_phone") @db.VarChar(20)
+  moveInDate    DateTime          @map("move_in_date") @db.Date
+  employment    String            @default("Student") @db.VarChar(50)
+  message       String?           @db.Text
+  status        ApplicationStatus @default(under_review)
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  student  User     @relation("StudentApplications", fields: [studentId], references: [id], onDelete: Cascade)
+  landlord User     @relation("LandlordApplications", fields: [landlordId], references: [id], onDelete: Cascade)
+
+  @@map("applications")
+}
+
+model RentPayment {
+  id            Int           @id @default(autoincrement())
+  invoiceNo     String        @unique @map("invoice_no") @db.VarChar(50)
+  propertyId    Int           @map("property_id")
+  studentId     Int           @map("student_id")
+  landlordId    Int           @map("landlord_id")
+  monthYear     String        @map("month_year") @db.VarChar(30)
+  amount        Decimal       @db.Decimal(10, 2)
+  status        PaymentStatus @default(pending)
+  paymentMethod String?       @map("payment_method") @db.VarChar(50)
+  transactionId String?       @map("transaction_id") @db.VarChar(100)
+  paidAt        DateTime?     @map("paid_at")
+  createdAt     DateTime      @default(now()) @map("created_at")
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  student  User     @relation("StudentPayments", fields: [studentId], references: [id], onDelete: Cascade)
+  landlord User     @relation("LandlordPayments", fields: [landlordId], references: [id], onDelete: Cascade)
+
+  @@map("rent_payments")
+}
+
+model MaintenanceRequest {
+  id         Int               @id @default(autoincrement())
+  propertyId Int               @map("property_id")
+  studentId  Int               @map("student_id")
+  landlordId Int               @map("landlord_id")
+  issue      String            @db.VarChar(255)
+  description String?          @db.Text
+  priority   Priority          @default(Medium)
+  status     MaintenanceStatus @default(open)
+  createdAt  DateTime          @default(now()) @map("created_at")
+  updatedAt  DateTime          @updatedAt @map("updated_at")
+  comments      MaintenanceComment[]
+  attachments   MaintenanceAttachment[]
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  student  User     @relation("StudentMaintenance", fields: [studentId], references: [id], onDelete: Cascade)
+  landlord User     @relation("LandlordMaintenance", fields: [landlordId], references: [id], onDelete: Cascade)
+
+  @@map("maintenance_requests")
+}
+
+model Review {
+  id            Int      @id @default(autoincrement())
+  propertyId    Int      @map("property_id")
+  studentId     Int      @map("student_id")
+  landlordId    Int      @map("landlord_id")
+  landlordStars Int      @map("landlord_stars") @db.TinyInt
+  propertyStars Int      @map("property_stars") @db.TinyInt
+  comment       String?  @db.Text
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  student  User     @relation("StudentReviews", fields: [studentId], references: [id], onDelete: Cascade)
+  landlord User     @relation("LandlordReviews", fields: [landlordId], references: [id], onDelete: Cascade)
+
+  @@map("reviews")
+}
+
+model Favorite {
+  studentId  Int      @map("student_id")
+  propertyId Int      @map("property_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  student  User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@id([studentId, propertyId])
+  @@map("favorites")
+}
+
+model Conversation {
+  id            Int      @id @default(autoincrement())
+  studentId     Int      @map("student_id")
+  landlordId    Int      @map("landlord_id")
+  propertyId    Int      @map("property_id")
+  status        String   @default("active") @db.VarChar(20)
+  lastMessageAt DateTime @default(now()) @map("last_message_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  student  User          @relation("StudentConversations", fields: [studentId], references: [id], onDelete: Cascade)
+  landlord User          @relation("LandlordConversations", fields: [landlordId], references: [id], onDelete: Cascade)
+  property Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  @@unique([studentId, landlordId, propertyId])
+  @@map("conversations")
+}
+
+model ChatMessage {
+  id             Int      @id @default(autoincrement())
+  conversationId Int      @map("conversation_id")
+  senderId       Int      @map("sender_id")
+  messageText    String   @map("message_text") @db.Text
+  isRead         Boolean  @default(false) @map("is_read")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@map("chat_messages")
+}
+
+model Complaint {
+  id             String          @id @db.VarChar(30)
+  complainantId  Int             @map("complainant_id")
+  accusedId      Int             @map("accused_id")
+  propertyId     Int?            @map("property_id")
+  category       String          @db.VarChar(100)
+  description    String          @db.Text
+  status         ComplaintStatus @default(Submitted)
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  complainant User             @relation("ComplaintsFiled", fields: [complainantId], references: [id], onDelete: Cascade)
+  accused     User             @relation("ComplaintsAgainst", fields: [accusedId], references: [id], onDelete: Cascade)
+  property    Property?        @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  replies     ComplaintReply[]
+
+  @@map("complaints")
+}
+
+model ComplaintReply {
+  id          Int      @id @default(autoincrement())
+  complaintId String   @map("complaint_id") @db.VarChar(30)
+  senderId    Int      @map("sender_id")
+  messageText String   @map("message_text") @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  complaint Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  sender    User      @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@map("complaint_replies")
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  title     String   @db.VarChar(150)
+  message   String   @db.Text
+  type      String   @default("general") @db.VarChar(50)
+  isRead    Boolean  @default(false) @map("is_read")
+  linkUrl   String?  @map("link_url") @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
