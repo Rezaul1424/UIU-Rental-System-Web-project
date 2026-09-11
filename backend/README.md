@@ -152,7 +152,30 @@ Built with **Node.js**, **Express**, and **MySQL**.
 
 ## 1. Database Setup (MySQL)
 
-You can import the schema and seed data into your local MySQL server using MySQL CLI or MySQL Workbench:
+The database uses MySQL 8+, tracked migrations, and deterministic development fixtures.
+
+Run the repeatable setup from `backend/`:
+
+```bash
+npm run db:setup
+```
+
+This creates the database when needed, applies the baseline schema once, applies every
+pending file in `database/migrations/`, and loads development-only fixtures from
+`database/seed.sql`. Existing databases are baselined without dropping their data.
+
+To run the steps separately:
+
+```bash
+npm run db:migrate
+npm run db:seed
+```
+
+The migration runner records applied files in `_schema_migrations`. The SQL files are
+idempotent, and seed statements use deterministic identifiers or guarded inserts.
+
+For a manual first-time import, the baseline schema and its original fixtures are also
+available through MySQL CLI or MySQL Workbench:
 
 ### Option A: Via Command Line
 ```bash
@@ -162,7 +185,7 @@ mysql -u root -p < database/schema.sql
 ### Option B: Via MySQL Workbench / DBeaver / phpMyAdmin
 1. Open MySQL Workbench.
 2. Open `backend/database/schema.sql`.
-3. Execute the script to create `uiu_rental_system` and all 12 tables + seed data.
+3. Execute the baseline script to create `uiu_rental_system` and its original tables + seed data.
 
 ---
 
@@ -182,6 +205,10 @@ DB_NAME=uiu_rental_system
 DB_PORT=3306
 JWT_SECRET=your_secret_key
 ```
+
+The migration and seed commands use the same `DB_HOST`, `DB_PORT`, `DB_USER`,
+`DB_PASSWORD`, and `DB_NAME` variables. Development fixtures use fake `.test`
+accounts and the password `password123`; never reuse them in production.
 
 ---
 

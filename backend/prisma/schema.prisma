@@ -99,6 +99,9 @@ model User {
   complaintsAgainst   Complaint[]          @relation("ComplaintsAgainst")
   complaintReplies    ComplaintReply[]
   notifications       Notification[]
+  leasesAsStudent     Lease[]              @relation("StudentLeases")
+  leasesAsLandlord    Lease[]              @relation("LandlordLeases")
+  auditEvents         AuditEvent[]         @relation("AuditActors")
 
   @@map("users")
 }
@@ -141,8 +144,90 @@ model Property {
   favorites           Favorite[]
   conversations       Conversation[]
   complaints          Complaint[]
+  categoryId          Int?                 @map("category_id")
+  category            ListingCategory?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  address             Address?
+  rooms               PropertyRoom[]
+  leases              Lease[]
 
   @@map("properties")
+}
+
+model ListingCategory {
+  id         Int        @id @default(autoincrement())
+  name       String     @unique @db.VarChar(80)
+  createdAt  DateTime   @default(now()) @map("created_at")
+  properties Property[]
+
+  @@map("listing_categories")
+}
+
+model Address {
+  id             Int      @id @default(autoincrement())
+  propertyId     Int      @unique @map("property_id")
+  street         String?  @db.VarChar(255)
+  area           String?  @db.VarChar(100)
+  city           String   @default("Dhaka") @db.VarChar(50)
+  postalCode     String?  @map("postal_code") @db.VarChar(20)
+  latitude       Decimal? @db.Decimal(10, 7)
+  longitude      Decimal? @db.Decimal(10, 7)
+  geocodeStatus  String   @default("pending") @map("geocode_status") @db.VarChar(20)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  property       Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([latitude, longitude])
+  @@map("addresses")
+}
+
+model PropertyRoom {
+  id         Int      @id @default(autoincrement())
+  propertyId Int      @map("property_id")
+  roomName   String   @map("room_name") @db.VarChar(50)
+  sizeSqft   Int?     @map("size_sqft")
+  createdAt  DateTime @default(now()) @map("created_at")
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([propertyId, roomName])
+  @@map("property_rooms")
+}
+
+model Lease {
+  id          Int      @id @default(autoincrement())
+  propertyId  Int      @map("property_id")
+  studentId   Int      @map("student_id")
+  landlordId  Int      @map("landlord_id")
+  status      String   @default("pending") @db.VarChar(20)
+  startDate   DateTime @map("start_date") @db.Date
+  endDate     DateTime? @map("end_date") @db.Date
+  monthlyRent Decimal  @map("monthly_rent") @db.Decimal(10, 2)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  student     User     @relation("StudentLeases", fields: [studentId], references: [id], onDelete: Restrict)
+  landlord    User     @relation("LandlordLeases", fields: [landlordId], references: [id], onDelete: Restrict)
+
+  @@index([propertyId, status])
+  @@index([studentId, status])
+  @@index([landlordId, status])
+  @@map("leases")
+}
+
+model AuditEvent {
+  id              String   @id @db.Char(36)
+  actorId         Int?     @map("actor_id")
+  action          String   @db.VarChar(100)
+  resourceType    String   @map("resource_type") @db.VarChar(80)
+  resourceId      String   @map("resource_id") @db.VarChar(80)
+  previousState   Json?    @map("previous_state")
+  newState        Json?    @map("new_state")
+  requestMetadata Json?    @map("request_metadata")
+  createdAt       DateTime @default(now()) @map("created_at")
+  actor           User?    @relation("AuditActors", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([resourceType, resourceId])
+  @@index([actorId, createdAt])
+  @@map("audit_events")
 }
 
 model PropertyImage {
