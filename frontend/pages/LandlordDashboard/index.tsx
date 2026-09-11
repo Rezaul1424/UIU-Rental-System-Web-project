@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Listing } from '../../types'
 import { listings } from '../../data'
 import ListingDetailPage from '../../components/ListingDetail'
@@ -409,17 +409,42 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
 
   // ── Chat ─────────────────────────────────────────────────────────────────────
   // Current tenants: active lease; Potential tenants: applicants
-  const currentTenants = [
-    { name: 'Tanvir Ahmed', listing: 'Studio near Gate 3', category: 'current' as const },
-    { name: 'Sadia Islam',  listing: 'Shared Mess – South Campus', category: 'current' as const },
-  ]
-  const potentialTenants = [
-    { name: 'Rifat Hassan', listing: 'Studio near Gate 3', category: 'potential' as const },
-    { name: 'Alif Hossain', listing: 'Bachelor Flat – North Side', category: 'potential' as const },
-  ]
+  const currentTenants = useMemo(() => {
+    const activeLeaseTenants = leases
+      .filter((lease) => lease.status === 'active')
+      .map((lease) => ({
+        name: lease.studentId ? `Student ${lease.studentId}` : 'Active Tenant',
+        listing: lease.propertyId ? `Property ${lease.propertyId}` : 'Current listing',
+        category: 'current' as const,
+      }))
 
-  const [activeChatName, setActiveChatName] = useState('Tanvir Ahmed')
-  const [chatThreads, setChatThreads] = useState<Record<string, ChatMsg[]>>({
+    return activeLeaseTenants.length > 0
+      ? activeLeaseTenants
+      : [
+          { name: 'Tanvir Ahmed', listing: 'Studio near Gate 3', category: 'current' as const },
+          { name: 'Sadia Islam', listing: 'Shared Mess – South Campus', category: 'current' as const },
+        ]
+  }, [leases])
+
+  const potentialTenants = useMemo(() => {
+    const applicantContacts = requests
+      .filter((request) => request.status === 'pending')
+      .map((request) => ({
+        name: request.studentId ? `Student ${request.studentId}` : request.student,
+        listing: request.listing || 'Pending property',
+        category: 'potential' as const,
+      }))
+
+    return applicantContacts.length > 0
+      ? applicantContacts
+      : [
+          { name: 'Rifat Hassan', listing: 'Studio near Gate 3', category: 'potential' as const },
+          { name: 'Alif Hossain', listing: 'Bachelor Flat – North Side', category: 'potential' as const },
+        ]
+  }, [requests])
+
+  const [activeChatName, setActiveChatName] = useState(currentTenants[0]?.name ?? 'Tanvir Ahmed')
+  const [chatThreads, setChatThreads] = useState<Record<string, ChatMsg[]>>(() => ({
     'Tanvir Ahmed': [
       { from: 'tenant', text: 'Hello! The AC has been making a loud noise lately.' },
       { from: 'landlord', text: "Thanks for letting me know. I'll send a technician tomorrow." },
@@ -433,7 +458,15 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
       { from: 'tenant', text: 'I submitted an application for the Studio near Gate 3. Can I schedule a viewing?' },
     ],
     'Alif Hossain': [],
-  })
+    ...(currentTenants[0] && currentTenants[0].name !== 'Tanvir Ahmed' ? { [currentTenants[0].name]: [{ from: 'tenant', text: 'I am following up on my maintenance request.' }] } : {}),
+    ...(potentialTenants[0] && !['Rifat Hassan', 'Alif Hossain'].includes(potentialTenants[0].name) ? { [potentialTenants[0].name]: [{ from: 'tenant', text: 'I would like to ask about viewing availability.' }] } : {}),
+  }))
+
+  useEffect(() => {
+    if (!currentTenants.some((tenant) => tenant.name === activeChatName) && !potentialTenants.some((tenant) => tenant.name === activeChatName)) {
+      setActiveChatName(currentTenants[0]?.name ?? potentialTenants[0]?.name ?? 'Tanvir Ahmed')
+    }
+  }, [activeChatName, currentTenants, potentialTenants])
   const [chatInput, setChatInput] = useState('')
 
   const sendChat = () => {

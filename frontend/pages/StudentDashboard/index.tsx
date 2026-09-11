@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Listing } from '../../types'
 import { listings } from '../../data'
 import { Badge } from '../../components/ui'
@@ -214,11 +214,30 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
 
   // ── Reviews ──────────────────────────────────────────────────────────────────
   // Landlords the student can review: current + any previously applied
-  const reviewableLandlords = [
-    { landlord: 'Rahman Faruk', property: 'Studio near Gate 3', listingId: 1 },
-    { landlord: 'Nusrat Jahan', property: 'Shared Mess – South Campus', listingId: 2 },
-  ]
+  const reviewableLandlords = useMemo(() => {
+    const derived = listings
+      .filter((listing) => listing.landlord && listing.title)
+      .map((listing) => ({
+        landlord: listing.landlord,
+        property: listing.title,
+        listingId: listing.id,
+      }))
+
+    if (derived.length > 0) return derived
+
+    return [
+      { landlord: 'Rahman Faruk', property: 'Studio near Gate 3', listingId: 1 },
+      { landlord: 'Nusrat Jahan', property: 'Shared Mess – South Campus', listingId: 2 },
+    ]
+  }, [])
+
   const [reviewTarget, setReviewTarget] = useState(reviewableLandlords[0])
+  useEffect(() => {
+    if (!reviewableLandlords.some((entry) => entry.listingId === reviewTarget.listingId)) {
+      setReviewTarget(reviewableLandlords[0])
+    }
+  }, [reviewTarget.listingId, reviewableLandlords])
+
   const [landlordStars, setLandlordStars] = useState(0)
   const [propStars, setPropStars] = useState(0)
   const [reviewText, setReviewText] = useState('')
@@ -246,15 +265,28 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
 
   // ── Chat ─────────────────────────────────────────────────────────────────────
   // All landlords from listings are available to chat with
-  const allLandlords = Array.from(new Map(listings.map(l => [l.landlord, l])).values())
-  const [activeChatLandlord, setActiveChatLandlord] = useState<string>(allLandlords[0].landlord)
-  const [chatThreads, setChatThreads] = useState<Record<string, ChatMsg[]>>({
+  const allLandlords = useMemo(
+    () => Array.from(new Map(listings.map((listing) => [listing.landlord, listing])).values()),
+    [],
+  )
+
+  const [activeChatLandlord, setActiveChatLandlord] = useState<string>(allLandlords[0]?.landlord ?? 'Rahman Faruk')
+  const [chatThreads, setChatThreads] = useState<Record<string, ChatMsg[]>>(() => ({
     'Rahman Faruk': [
       { from: 'landlord', text: 'Hello! How can I help you today?' },
       { from: 'student', text: 'I wanted to ask about the parking availability.' },
       { from: 'landlord', text: 'Yes, we have one parking spot included with your unit.' },
     ],
-  })
+    ...(allLandlords[0] && allLandlords[0].landlord !== 'Rahman Faruk'
+      ? { [allLandlords[0].landlord]: [{ from: 'landlord', text: `Hello! I can help with ${allLandlords[0].title}.` }] }
+      : {}),
+  }))
+
+  useEffect(() => {
+    if (!allLandlords.some((listing) => listing.landlord === activeChatLandlord) && allLandlords[0]) {
+      setActiveChatLandlord(allLandlords[0].landlord)
+    }
+  }, [activeChatLandlord, allLandlords])
   const [chatInput, setChatInput] = useState('')
 
   const openChatWith = (landlordName: string) => {
