@@ -9,11 +9,28 @@ type OverviewPageProps = {
   mReqs: MaintReq[]
   pendingRequests: number
   requests: RequestItem[]
+  activeTenants: number
+  monthlyRevenue: number
   setPage: (page: LandlordPage) => void
   openLandlordListing: (listing: Listing) => void
 }
 
-export default function OverviewPage({ userName, myListings, mReqs, pendingRequests, requests, setPage, openLandlordListing }: OverviewPageProps) {
+export default function OverviewPage({ userName, myListings, mReqs, pendingRequests, requests, activeTenants, monthlyRevenue, setPage, openLandlordListing }: OverviewPageProps) {
+  const activityFeed = [
+    ...requests.slice(0, 2).map((request) => ({
+      date: request.date,
+      icon: '📬',
+      text: `${request.student} requested ${request.listing}`,
+      color: 'bg-amber-50 text-amber-600',
+    })),
+    ...mReqs.slice(0, 2).map((request) => ({
+      date: request.date,
+      icon: '🔧',
+      text: `${request.title} — ${request.tenant}`,
+      color: 'bg-sky-50 text-sky-600',
+    })),
+  ].slice(0, 4)
+
   return (
     <>
       <div className="flex items-end justify-between">
@@ -27,8 +44,8 @@ export default function OverviewPage({ userName, myListings, mReqs, pendingReque
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Stat label="Total Properties" value={myListings.length} sub={`${myListings.filter(l => l.status === 'available').length} available`} icon="🏠" />
-        <Stat label="Active Tenants" value={2} sub="All rent current" icon="👥" />
-        <Stat label="Monthly Revenue" value="৳12,500" sub="Aug 2026 projected" icon="💰" />
+        <Stat label="Active Tenants" value={activeTenants} sub="Current leases" icon="👥" />
+        <Stat label="Monthly Revenue" value={`৳${monthlyRevenue.toLocaleString()}`} sub="Current lease value" icon="💰" />
         <Stat label="Open Maintenance" value={mReqs.filter(m => m.stage < 5).length} sub="Needs attention" icon="🔧" />
       </div>
 
@@ -106,21 +123,19 @@ export default function OverviewPage({ userName, myListings, mReqs, pendingReque
           <div className="bg-white rounded-2xl shadow-sm p-5">
             <div className="font-semibold text-[#111827] mb-4">Recent Activity</div>
             <div className="space-y-0">
-              {[
-                { date: '9 Aug', icon: '📬', text: 'Rifat Hassan applied for Studio near Gate 3', color: 'bg-amber-50 text-amber-600' },
-                { date: '7 Aug', icon: '💳', text: 'Rent received from Sadiya Islam — ৳6,500', color: 'bg-emerald-50 text-emerald-600' },
-                { date: '5 Aug', icon: '🔧', text: 'Maintenance request: Water leak in bathroom', color: 'bg-sky-50 text-sky-600' },
-                { date: '1 Aug', icon: '💳', text: 'Rent received from Tanvir Ahmed — ৳4,200', color: 'bg-emerald-50 text-emerald-600' },
-                { date: '28 Jul', icon: '✅', text: 'Listing "2BR Flat — South Campus" marked occupied', color: 'bg-gray-50 text-gray-500' },
-              ].map((activity, index) => (
-                <div key={index} className="flex items-start gap-3 py-2.5 border-b border-gray-50 last:border-0">
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm flex-shrink-0 ${activity.color}`}>{activity.icon}</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm text-[#111827]">{activity.text}</div>
+              {activityFeed.length === 0 ? (
+                <div className="text-sm text-gray-500 py-4">No recent requests or maintenance updates.</div>
+              ) : (
+                activityFeed.map((activity, index) => (
+                  <div key={`${activity.text}-${index}`} className="flex items-start gap-3 py-2.5 border-b border-gray-50 last:border-0">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm flex-shrink-0 ${activity.color}`}>{activity.icon}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-[#111827]">{activity.text}</div>
+                    </div>
+                    <div className="text-xs text-gray-400 flex-shrink-0 mt-0.5">{activity.date}</div>
                   </div>
-                  <div className="text-xs text-gray-400 flex-shrink-0 mt-0.5">{activity.date}</div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </div>

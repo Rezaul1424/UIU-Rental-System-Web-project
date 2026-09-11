@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Listing } from '../../types'
-import { listings, rentTransactions } from '../../data'
+import { listings } from '../../data'
 import ListingDetailPage from '../../components/ListingDetail'
 import NotificationBell from '../../components/NotificationBell'
 import { createListing, deleteListing, getApplications, getLeases, getMaintenanceRequests, getMyListings, getProfile, reviewApplication, updateListing, updateMaintenanceStatus } from '../../lib/landlordApi'
@@ -25,6 +25,7 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
   const [dashboardError, setDashboardError] = useState('')
   const [landlordProfile, setLandlordProfile] = useState<{ name?: string; email?: string; propertyCount?: number } | null>(null)
   const [myListings, setMyListings] = useState<Listing[]>([])
+  const [leases, setLeases] = useState<Array<{ id?: string; propertyId: string; studentId?: string; status?: string; monthlyRent?: number }>>([])
   const [requests, setRequests] = useState<RequestItem[]>([])
   const [mReqs, setMReqs] = useState<MaintReq[]>([])
   const openLandlordListing = (l: Listing) => { setLandlordView(l); setPage('listing-detail') }
@@ -91,10 +92,7 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
           })))
         }
         if (Array.isArray(leasesResult)) {
-          const activeLeaseCount = leasesResult.filter((lease) => lease.status === 'active').length
-          if (activeLeaseCount > 0 && !requests.length) {
-            setRequests((prev) => prev)
-          }
+          setLeases(leasesResult)
         }
         if (Array.isArray(maintenanceResult)) {
           setMReqs(maintenanceResult.map((request) => ({
@@ -340,6 +338,16 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
   // ── Rental requests ──────────────────────────────────────────────────────────
   const [expandedRequestId, setExpandedRequestId] = useState<number | null>(null)
   const pendingRequests = requests.filter(r => r.status === 'pending').length
+  const activeTenantCount = leases.filter((lease) => lease.status === 'active').length
+  const monthlyRevenue = leases.reduce((sum, lease) => sum + Number(lease.monthlyRent ?? 0), 0)
+  const liveLeaseTransactions = leases.map((lease) => ({
+    id: Number(lease.id ?? lease.propertyId ?? Date.now()),
+    tenant: lease.studentId ? `Student ${lease.studentId}` : 'Tenant',
+    listing: lease.propertyId ? `Property ${lease.propertyId}` : 'Lease',
+    amount: Number(lease.monthlyRent ?? 0),
+    month: 'Current cycle',
+    paid: lease.status === 'active',
+  }))
   const approveRequest = async (id: number) => {
     try {
       await reviewApplication(id, { status: 'accepted' })
@@ -595,6 +603,8 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
               mReqs={mReqs}
               pendingRequests={pendingRequests}
               requests={requests}
+              activeTenants={activeTenantCount}
+              monthlyRevenue={monthlyRevenue}
               setPage={setPage}
               openLandlordListing={openLandlordListing}
             />
@@ -698,7 +708,7 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
 
           {/* ── Rent Tracker ── */}
           {page === 'rent' && (
-            <RentPage rentTransactions={rentTransactions} />
+            <RentPage rentTransactions={liveLeaseTransactions} />
           )}
 
           {/* ── Maintenance ── */}
