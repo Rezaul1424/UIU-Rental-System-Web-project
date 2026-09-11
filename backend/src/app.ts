@@ -6,6 +6,21 @@ import { errorHandler, notFoundHandler } from './plugins/error-handler.js';
 import { healthRouter } from './routes/health.js';
 import { v1Router } from './routes/index.js';
 
+declare global {
+  namespace Express {
+    interface Request {
+      user?: {
+        id: string;
+        name: string;
+        email: string;
+        role: 'admin' | 'landlord' | 'student' | 'guest';
+        status: 'active' | 'pending' | 'suspended' | 'deactivated';
+        studentId?: string;
+      };
+    }
+  }
+}
+
 /**
  * Builds and fully configures an Express app but never calls
  * `.listen()`. This is what makes the app testable: tests import
