@@ -66,6 +66,9 @@ pnpm-debug.log*
 BACKEND_PLAN.md
 BACKEND_IMPLEMENTATION_DETAILS.md
 
+# Local viva documentation (not committed)
+viva-docs/
+
 #backend
 /backend/node_modules/
 /backend/dist/
