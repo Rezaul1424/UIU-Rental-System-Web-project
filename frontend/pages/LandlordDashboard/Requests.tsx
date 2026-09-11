@@ -17,7 +17,11 @@ export default function RequestsPage({ requests, expandedRequestId, setExpandedR
         <p className="text-sm text-gray-500 mt-0.5">Approve or reject student applications for your properties</p>
       </div>
       <div className="space-y-3">
-        {requests.map(request => {
+        {requests.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-8 text-center text-sm text-gray-500">
+            No rental applications have been submitted yet.
+          </div>
+        ) : requests.map(request => {
           const isExpanded = expandedRequestId === request.id
           return (
             <div key={request.id} className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">

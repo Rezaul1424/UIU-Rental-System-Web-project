@@ -42,7 +42,11 @@ export default function MaintenancePage({ mReqs, expandedMaintId, setExpandedMai
       </div>
 
       <div className="space-y-4">
-        {mReqs.map(req => {
+        {mReqs.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-8 text-center text-sm text-gray-500">
+            No maintenance requests are active right now.
+          </div>
+        ) : mReqs.map(req => {
           const isOpen = expandedMaintId === req.id
           const pct = Math.round((req.stage / 6) * 100)
           return (
@@ -74,8 +78,8 @@ export default function MaintenancePage({ mReqs, expandedMaintId, setExpandedMai
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button onClick={() => setExpandedMaintId(isOpen ? null : req.id)} className="text-xs border border-gray-200 text-gray-500 px-2.5 py-1.5 rounded-lg hover:bg-gray-50 transition-colors font-medium">{isOpen ? 'Close ▲' : 'Details ▼'}</button>
-                  <button disabled={req.stage === 0} onClick={() => revertStage(req.id)} className="text-xs border border-gray-200 text-gray-500 px-3 py-1.5 rounded-lg hover:bg-gray-50 font-medium transition-colors disabled:opacity-30 disabled:cursor-not-allowed">← Revert</button>
-                  <button disabled={req.stage >= 6} onClick={() => advanceStage(req.id)} className="text-xs bg-[#1a1a18] text-white px-3 py-1.5 rounded-lg hover:bg-[#333] font-medium transition-colors disabled:opacity-30 disabled:cursor-not-allowed">{req.stage === 5 ? 'Close' : 'Advance →'}</button>
+                  <button disabled={req.stage === 0} onClick={() => void revertStage(req.id)} className="text-xs border border-gray-200 text-gray-500 px-3 py-1.5 rounded-lg hover:bg-gray-50 font-medium transition-colors disabled:opacity-30 disabled:cursor-not-allowed">← Revert</button>
+                  <button disabled={req.stage >= 6} onClick={() => void advanceStage(req.id)} className="text-xs bg-[#1a1a18] text-white px-3 py-1.5 rounded-lg hover:bg-[#333] font-medium transition-colors disabled:opacity-30 disabled:cursor-not-allowed">{req.stage === 5 ? 'Close' : 'Advance →'}</button>
                 </div>
               </div>
 

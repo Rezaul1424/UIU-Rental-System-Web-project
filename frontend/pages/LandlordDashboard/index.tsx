@@ -3,7 +3,7 @@ import type { Listing } from '../../types'
 import { listings, rentTransactions } from '../../data'
 import ListingDetailPage from '../../components/ListingDetail'
 import NotificationBell from '../../components/NotificationBell'
-import { createListing, getApplications, getMyListings, getProfile, reviewApplication, updateListing } from '../../lib/landlordApi'
+import { createListing, deleteListing, getApplications, getLeases, getMaintenanceRequests, getMyListings, getProfile, reviewApplication, updateListing, updateMaintenanceStatus } from '../../lib/landlordApi'
 import { landlordNotifs } from './constants'
 import LandlordSidebarNav, { type LandlordPage } from './Sidebar'
 import type { MaintReq, RequestItem, ChatMsg, MaintStage } from './types'
@@ -24,8 +24,32 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
   const [dashboardLoading, setDashboardLoading] = useState(false)
   const [dashboardError, setDashboardError] = useState('')
   const [landlordProfile, setLandlordProfile] = useState<{ name?: string; email?: string; propertyCount?: number } | null>(null)
-  const [myListings, setMyListings] = useState<Listing[]>(listings.slice(0, 3))
+  const [myListings, setMyListings] = useState<Listing[]>([])
+  const [requests, setRequests] = useState<RequestItem[]>([])
+  const [mReqs, setMReqs] = useState<MaintReq[]>([])
   const openLandlordListing = (l: Listing) => { setLandlordView(l); setPage('listing-detail') }
+
+  const formatDisplayDate = (value?: string) => {
+    if (!value) return 'N/A'
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return 'N/A'
+    return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+  }
+
+  const mapMaintenanceStatusToStage = (status?: string): MaintStage => {
+    switch (status) {
+      case 'open': return 1
+      case 'in-progress': return 3
+      case 'resolved': return 5
+      default: return 1
+    }
+  }
+
+  const mapStageToStatus = (stage: MaintStage): 'open' | 'in-progress' | 'resolved' => {
+    if (stage >= 5) return 'resolved'
+    if (stage >= 2) return 'in-progress'
+    return 'open'
+  }
 
   useEffect(() => {
     let active = true
@@ -35,10 +59,12 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
       setDashboardError('')
 
       try {
-        const [profileResult, listingsResult, applicationsResult] = await Promise.all([
+        const [profileResult, listingsResult, applicationsResult, leasesResult, maintenanceResult] = await Promise.all([
           getProfile().catch(() => null),
           getMyListings().catch(() => []),
           getApplications().catch(() => []),
+          getLeases().catch(() => []),
+          getMaintenanceRequests().catch(() => []),
         ])
 
         if (!active) return
@@ -60,8 +86,29 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
             employment: 'Student',
             message: application.message ?? 'New application submitted.',
             listing: `Property ${application.propertyId}`,
-            date: application.createdAt ? new Date(application.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A',
+            date: application.createdAt ? formatDisplayDate(application.createdAt) : 'N/A',
             status: ['accepted', 'rejected', 'cancelled'].includes(application.status) ? (application.status === 'accepted' ? 'approved' : 'rejected') : 'pending',
+          })))
+        }
+        if (Array.isArray(leasesResult)) {
+          const activeLeaseCount = leasesResult.filter((lease) => lease.status === 'active').length
+          if (activeLeaseCount > 0 && !requests.length) {
+            setRequests((prev) => prev)
+          }
+        }
+        if (Array.isArray(maintenanceResult)) {
+          setMReqs(maintenanceResult.map((request) => ({
+            id: Number(request.id ?? Date.now()),
+            title: request.issue ?? 'Maintenance issue',
+            description: request.description ?? 'Maintenance request submitted by the tenant.',
+            listing: `Property ${request.propertyId}`,
+            tenant: `Student ${request.studentId}`,
+            date: request.createdAt ? formatDisplayDate(request.createdAt) : 'N/A',
+            priority: ['Low', 'Medium', 'High'].includes(String(request.priority)) ? (request.priority as 'Low' | 'Medium' | 'High') : 'Medium',
+            stage: mapMaintenanceStatusToStage(request.status),
+            estimatedDate: 'TBD',
+            comments: [{ from: 'tenant', text: request.description ?? 'Maintenance request submitted.', date: request.createdAt ? formatDisplayDate(request.createdAt) : 'Today' }],
+            hasPhotos: false,
           })))
         }
       } catch (error) {
@@ -291,11 +338,6 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
   }
 
   // ── Rental requests ──────────────────────────────────────────────────────────
-  const [requests, setRequests] = useState<RequestItem[]>([
-    { id: 1, student: 'Rifat Hassan', studentId: '2024-EEE-059', dept: 'B.Sc. EEE, Batch 2024', phone: '+880 1712-345678', moveIn: '1 Sep 2026', employment: 'Student (Family Support)', message: "I'm a first-year student looking for a quiet place close to campus. I am well-mannered and responsible.", listing: 'Studio near Gate 3', date: '29 Jul 2026', status: 'pending' },
-    { id: 2, student: 'Alif Hossain', studentId: '2023-BBA-201', dept: 'BBA, Batch 2023', phone: '+880 1898-765432', moveIn: '15 Aug 2026', employment: 'Student (Part-time Job)', message: 'Looking for a bachelor flat to share with one friend. We are both UIU students and can provide references.', listing: 'Bachelor Flat – North Side', date: '27 Jul 2026', status: 'pending' },
-    { id: 3, student: 'Tanvir Ahmed', studentId: '2023-CSE-104', dept: 'B.Sc. CSE, Batch 2023', phone: '+880 1755-112233', moveIn: '1 Jul 2026', employment: 'Student (Scholarship)', message: 'I have been looking for a unit near Gate 3 for easy access to the CS department. References available.', listing: 'Studio near Gate 3', date: '1 Jul 2026', status: 'approved' },
-  ])
   const [expandedRequestId, setExpandedRequestId] = useState<number | null>(null)
   const pendingRequests = requests.filter(r => r.status === 'pending').length
   const approveRequest = async (id: number) => {
@@ -318,47 +360,33 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
   }
 
   // ── Maintenance ──────────────────────────────────────────────────────────────
-  const [mReqs, setMReqs] = useState<MaintReq[]>([
-    {
-      id: 1, title: 'AC not cooling properly', description: 'The air conditioner in the bedroom has stopped cooling. Fan runs but no cold air. Already checked power supply.',
-      listing: 'Studio near Gate 3', tenant: 'Tanvir Ahmed', date: '25 Jul 2026', priority: 'High', stage: 2,
-      estimatedDate: '3 Aug 2026',
-      comments: [
-        { from: 'tenant', text: 'The AC has been making noise too. Please fix ASAP, it is very hot.', date: '25 Jul' },
-        { from: 'landlord', text: "I've approved the request. A technician will be assigned this week.", date: '26 Jul' },
-      ],
-      hasPhotos: true,
-    },
-    {
-      id: 2, title: 'Leaking pipe in bathroom', description: 'Water dripping from under the sink pipe joint. Placed a bucket but it fills up every 2–3 hours.',
-      listing: 'Shared Mess – South Campus', tenant: 'Sadia Islam', date: '22 Jul 2026', priority: 'Medium', stage: 4,
-      estimatedDate: '31 Jul 2026',
-      comments: [
-        { from: 'tenant', text: 'This has been going on for a week. The floor tiles are getting damaged.', date: '22 Jul' },
-        { from: 'landlord', text: 'Technician Karim is assigned. He will visit tomorrow between 10am and 12pm.', date: '23 Jul' },
-        { from: 'tenant', text: 'Karim arrived and did a temporary fix. Awaiting permanent repair.', date: '24 Jul' },
-      ],
-      hasPhotos: true,
-    },
-    {
-      id: 3, title: 'Door lock broken', description: 'The main door lock cylinder is jammed and the key no longer turns smoothly. Door can be opened but only with difficulty.',
-      listing: 'Bachelor Flat – North Side', tenant: 'Rifat Hassan', date: '20 Jul 2026', priority: 'Urgent', stage: 5,
-      estimatedDate: '22 Jul 2026',
-      comments: [
-        { from: 'tenant', text: 'This is a security issue. Please prioritize.', date: '20 Jul' },
-        { from: 'landlord', text: 'Understood. Emergency lock replacement ordered.', date: '20 Jul' },
-        { from: 'landlord', text: 'Replacement complete. New keys handed to tenant.', date: '22 Jul' },
-      ],
-      hasPhotos: false,
-    },
-  ])
   const [expandedMaintId, setExpandedMaintId] = useState<number | null>(null)
   const [newComment, setNewComment] = useState<Record<number, string>>({})
 
-  const advanceStage = (id: number) =>
-    setMReqs(ms => ms.map(m => m.id === id && m.stage < 6 ? { ...m, stage: (m.stage + 1) as MaintStage } : m))
-  const revertStage = (id: number) =>
-    setMReqs(ms => ms.map(m => m.id === id && m.stage > 0 ? { ...m, stage: (m.stage - 1) as MaintStage } : m))
+  const advanceStage = async (id: number) => {
+    const current = mReqs.find((item) => item.id === id)
+    if (!current || current.stage >= 6) return
+    const nextStage = (current.stage + 1) as MaintStage
+    try {
+      await updateMaintenanceStatus(id, { status: mapStageToStatus(nextStage) })
+      setMReqs(ms => ms.map(m => m.id === id ? { ...m, stage: nextStage } : m))
+      setDashboardError('')
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Unable to update maintenance request status.')
+    }
+  }
+  const revertStage = async (id: number) => {
+    const current = mReqs.find((item) => item.id === id)
+    if (!current || current.stage <= 0) return
+    const nextStage = (current.stage - 1) as MaintStage
+    try {
+      await updateMaintenanceStatus(id, { status: mapStageToStatus(nextStage) })
+      setMReqs(ms => ms.map(m => m.id === id ? { ...m, stage: nextStage } : m))
+      setDashboardError('')
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Unable to revert maintenance request status.')
+    }
+  }
 
   const addComment = (id: number) => {
     const text = newComment[id]?.trim()
@@ -413,6 +441,19 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
   const [showRemoveListingConfirm, setShowRemoveListingConfirm] = useState(false)
   const [showDiscardEditConfirm, setShowDiscardEditConfirm] = useState(false)
   const [showDiscardAddConfirm, setShowDiscardAddConfirm] = useState(false)
+
+  const handleRemoveListing = async (listingId: number | null) => {
+    if (listingId === null || Number.isNaN(listingId)) return
+    try {
+      await deleteListing(listingId)
+      setMyListings((prev) => prev.filter((item) => item.id !== listingId))
+      setShowRemoveListingConfirm(false)
+      setPage('listings')
+      setDashboardError('')
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Unable to remove this listing.')
+    }
+  }
 
   // Landlord complaints
   type LandlordComplaint = { id: string; against: string; property: string; category: string; subject: string; description: string; date: string; status: 'Submitted' | 'Under Review' | 'Responded' | 'Resolved' | 'Closed' }
@@ -507,7 +548,7 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
               <p className="text-sm text-gray-500 text-center mb-6">Are you sure about removing this listing? All applicants will be notified and this cannot be undone.</p>
               <div className="flex gap-3">
                 <button onClick={() => setShowRemoveListingConfirm(false)} className="flex-1 border border-gray-200 text-gray-600 text-sm font-semibold py-2.5 rounded-xl hover:bg-gray-50 transition-colors">Cancel</button>
-                <button onClick={() => { setShowRemoveListingConfirm(false); setPage('listings') }} className="flex-1 bg-red-600 text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-red-700 transition-colors">Remove Listing</button>
+                <button onClick={() => { void handleRemoveListing(editListingId); }} className="flex-1 bg-red-600 text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-red-700 transition-colors">Remove Listing</button>
               </div>
             </div>
           </div>

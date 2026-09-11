@@ -70,10 +70,37 @@ export type LandlordApplication = {
   employment?: string;
 };
 
+export type LandlordLeaseSummary = {
+  id: string;
+  propertyId: string;
+  studentId: string;
+  landlordId: string;
+  status: 'pending' | 'active' | 'ended' | 'terminated';
+  startDate?: string;
+  endDate?: string;
+  monthlyRent?: number;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type LandlordMaintenanceRequest = {
+  id: string;
+  propertyId: string;
+  studentId: string;
+  landlordId: string;
+  issue: string;
+  description?: string;
+  priority: 'Low' | 'Medium' | 'High';
+  status: 'open' | 'in-progress' | 'resolved';
+  category?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export const getApplications = async (): Promise<LandlordApplication[]> => {
-  const payload = await api.get<Array<any>>('/api/v1/landlord/applications');
-  if (!Array.isArray(payload)) return [];
-  return payload.map((application) => ({
+  const payload = await api.get<Array<any> | { data?: Array<any> }>('/api/v1/landlord/applications');
+  const applications = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
+  return applications.map((application) => ({
     id: application.id,
     propertyId: application.propertyId,
     studentId: application.studentId,
@@ -86,4 +113,46 @@ export const getApplications = async (): Promise<LandlordApplication[]> => {
   }));
 };
 
+export const getLeases = async (): Promise<LandlordLeaseSummary[]> => {
+  const payload = await api.get<Array<any> | { data?: Array<any> }>('/api/v1/landlord/leases');
+  const leases = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
+
+  return leases.map((lease) => ({
+    id: String(lease.id ?? lease.leaseId ?? ''),
+    propertyId: String(lease.propertyId ?? lease.property_id ?? lease.listingId ?? ''),
+    studentId: String(lease.studentId ?? lease.student_id ?? ''),
+    landlordId: String(lease.landlordId ?? lease.landlord_id ?? ''),
+    status: ['pending', 'active', 'ended', 'terminated'].includes(String(lease.status)) ? lease.status : 'active',
+    startDate: lease.startDate ?? lease.start_date,
+    endDate: lease.endDate ?? lease.end_date,
+    monthlyRent: Number(lease.monthlyRent ?? lease.monthly_rent ?? 0),
+    createdAt: lease.createdAt ?? lease.created_at,
+    updatedAt: lease.updatedAt ?? lease.updated_at,
+  }));
+};
+
+export const getMaintenanceRequests = async (): Promise<LandlordMaintenanceRequest[]> => {
+  const payload = await api.get<Array<any> | { data?: Array<any> }>('/api/v1/landlord/maintenance');
+  const requests = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
+
+  return requests.map((request) => ({
+    id: String(request.id ?? request.requestId ?? ''),
+    propertyId: String(request.propertyId ?? request.property_id ?? ''),
+    studentId: String(request.studentId ?? request.student_id ?? ''),
+    landlordId: String(request.landlordId ?? request.landlord_id ?? ''),
+    issue: request.issue ?? 'Maintenance request',
+    description: request.description,
+    priority: ['Low', 'Medium', 'High'].includes(String(request.priority)) ? request.priority : 'Medium',
+    status: ['open', 'in-progress', 'resolved'].includes(String(request.status)) ? request.status : 'open',
+    category: request.category,
+    createdAt: request.createdAt ?? request.created_at,
+    updatedAt: request.updatedAt ?? request.updated_at,
+  }));
+};
+
 export const reviewApplication = async (applicationId: string | number, payload: { status: string; decisionNotes?: string }) => api.patch(`/api/v1/landlord/applications/${applicationId}/status`, payload);
+
+export const updateMaintenanceStatus = async (requestId: string | number, payload: { status: 'open' | 'in-progress' | 'resolved'; notes?: string; updatedAt?: string }) =>
+  api.patch(`/api/v1/landlord/maintenance/${requestId}/status`, payload);
+
+export const deleteListing = async (listingId: string | number) => api.delete(`/api/v1/landlord/listings/${listingId}`);
