@@ -16,7 +16,7 @@ const envSchema = z.object({
   CORS_ALLOWED_ORIGINS: z
     .string()
     .min(1, 'CORS_ALLOWED_ORIGINS must not be empty')
-    .default('http://localhost:5173,http://localhost:8443'),
+    .default('http://localhost:5173,http://localhost:4173,http://localhost:8443'),
 
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
