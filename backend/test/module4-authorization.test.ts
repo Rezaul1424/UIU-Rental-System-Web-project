@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../src/app.js';
+import { createAuthToken, registerUser } from '../src/auth/auth.js';
 
 const app = buildApp();
 
@@ -62,12 +63,13 @@ describe('Module 4 authorization and security rules', () => {
   });
 
   it('allows admins to access protected resources and denies non-admin users', async () => {
-    const admin = await request(app).post('/api/v1/auth/register').send({
+    const admin = await registerUser({
       name: 'Admin User',
       email: 'admin@uiu.ac.bd',
       password: 'AdminPass123!',
       role: 'admin',
     });
+    const adminToken = await createAuthToken(admin.user);
 
     const student = await request(app).post('/api/v1/auth/register').send({
       name: 'Student C',
@@ -77,11 +79,6 @@ describe('Module 4 authorization and security rules', () => {
       role: 'student',
     });
 
-    const adminLogin = await request(app).post('/api/v1/auth/login').send({
-      email: 'admin@uiu.ac.bd',
-      password: 'AdminPass123!',
-    });
-
     const studentLogin = await request(app).post('/api/v1/auth/login').send({
       email: 'student-c@student.uiu.ac.bd',
       password: 'StrongPass123!',
@@ -89,7 +86,7 @@ describe('Module 4 authorization and security rules', () => {
 
     const adminAccess = await request(app)
       .get(`/api/v1/security/admin/inspect/${student.body.user.id}`)
-      .set('Authorization', `Bearer ${adminLogin.body.token}`);
+      .set('Authorization', `Bearer ${adminToken}`);
 
     const studentForbidden = await request(app)
       .get(`/api/v1/security/admin/inspect/${student.body.user.id}`)

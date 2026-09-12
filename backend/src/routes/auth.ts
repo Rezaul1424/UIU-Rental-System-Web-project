@@ -21,6 +21,14 @@ const registerSchema = z.object({
   password: z.string().min(8),
   studentId: z.string().trim().min(3).optional(),
   role: z.enum(['admin', 'landlord', 'student']).default('student'),
+}).superRefine((data, context) => {
+  if (data.role === 'student' && !data.studentId) {
+    context.addIssue({
+      code: 'custom',
+      path: ['studentId'],
+      message: 'Student ID is required for student accounts',
+    });
+  }
 });
 
 const loginSchema = z.object({
@@ -50,7 +58,7 @@ router.post(
   '/register',
   asyncHandler(async (req, res) => {
     const data = registerSchema.parse(req.body);
-    if (data.role === 'admin' && process.env.NODE_ENV !== 'test') {
+    if (data.role === 'admin') {
       throw new AppError(403, 'ADMIN_REGISTRATION_DISABLED', 'Administrator accounts are provisioned securely');
     }
     const result = await registerUser(data);
@@ -60,6 +68,18 @@ router.post(
       user: result.user,
       token,
     });
+  }),
+);
+
+router.get(
+  '/me',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    if (!req.user) {
+      throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+    }
+
+    res.json({ user: req.user });
   }),
 );
 

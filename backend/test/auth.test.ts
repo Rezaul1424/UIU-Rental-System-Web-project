@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../src/app.js';
+import { createAuthToken, registerUser } from '../src/auth/auth.js';
 
 const app = buildApp();
 
@@ -45,6 +46,57 @@ describe('Module 3 authentication lifecycle', () => {
     expect(response.body.token).toBeTypeOf('string');
   });
 
+  it('returns the authenticated user from /me', async () => {
+    const registration = await request(app).post('/api/v1/auth/register').send({
+      name: 'Current User',
+      email: 'current@student.uiu.ac.bd',
+      password: 'StrongPass123!',
+      studentId: '01123456794',
+      role: 'student',
+    });
+
+    const response = await request(app)
+      .get('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${registration.body.token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.user.id).toBe(registration.body.user.id);
+    expect(response.body.user.email).toBe('current@student.uiu.ac.bd');
+    expect(response.body.user.passwordHash).toBeUndefined();
+  });
+
+  it('blocks public administrator registration', async () => {
+    const response = await request(app).post('/api/v1/auth/register').send({
+      name: 'Public Admin',
+      email: 'public-admin@uiu.ac.bd',
+      password: 'AdminPass123!',
+      role: 'admin',
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe('ADMIN_REGISTRATION_DISABLED');
+  });
+
+  it('places landlord accounts in pending status until approval', async () => {
+    const registration = await request(app).post('/api/v1/auth/register').send({
+      name: 'Pending Landlord',
+      email: 'pending-landlord@uiu.ac.bd',
+      password: 'StrongPass123!',
+      role: 'landlord',
+    });
+
+    expect(registration.status).toBe(201);
+    expect(registration.body.user.status).toBe('pending');
+
+    const login = await request(app).post('/api/v1/auth/login').send({
+      email: 'pending-landlord@uiu.ac.bd',
+      password: 'StrongPass123!',
+    });
+
+    expect(login.status).toBe(403);
+    expect(login.body.error.code).toBe('ACCOUNT_PENDING');
+  });
+
   it('rejects invalid login credentials safely', async () => {
     const response = await request(app).post('/api/v1/auth/login').send({
       email: 'missing@student.uiu.ac.bd',
@@ -64,12 +116,13 @@ describe('Module 3 authentication lifecycle', () => {
       role: 'student',
     });
 
-    await request(app).post('/api/v1/auth/register').send({
+    const admin = await registerUser({
       name: 'Admin User',
       email: 'admin@uiu.ac.bd',
       password: 'AdminPass123!',
       role: 'admin',
     });
+    const adminToken = await createAuthToken(admin.user);
 
     const adminLogin = await request(app).post('/api/v1/auth/login').send({
       email: 'admin@uiu.ac.bd',
@@ -78,7 +131,7 @@ describe('Module 3 authentication lifecycle', () => {
 
     const suspension = await request(app)
       .post('/api/v1/auth/admin/suspend-user')
-      .set('Authorization', `Bearer ${adminLogin.body.token}`)
+      .set('Authorization', `Bearer ${adminToken}`)
       .send({ email: 'suspended@student.uiu.ac.bd', reason: 'manual review' });
 
     expect(suspension.status).toBe(200);
@@ -156,6 +209,30 @@ describe('Module 3 authentication lifecycle', () => {
     expect(login.status).toBe(200);
   });
 
+  it('invalidates existing sessions after a password reset', async () => {
+    const registration = await request(app).post('/api/v1/auth/register').send({
+      name: 'Reset Session User',
+      email: 'reset-session@student.uiu.ac.bd',
+      password: 'OldPass123!',
+      studentId: '01123456795',
+      role: 'student',
+    });
+
+    const resetRequest = await request(app)
+      .post('/api/v1/auth/password-reset/request')
+      .send({ email: 'reset-session@student.uiu.ac.bd' });
+
+    await request(app)
+      .post('/api/v1/auth/password-reset/confirm')
+      .send({ token: resetRequest.body.token, newPassword: 'NewPass123!' });
+
+    const currentUser = await request(app)
+      .get('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${registration.body.token}`);
+
+    expect(currentUser.status).toBe(401);
+  });
+
   it('deactivates an account after confirmation', async () => {
     await request(app).post('/api/v1/auth/register').send({
       name: 'Deactivate User',
@@ -180,6 +257,12 @@ describe('Module 3 authentication lifecycle', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.user.status).toBe('deactivated');
+
+    const currentUser = await request(app)
+      .get('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${loginBefore.body.token}`);
+
+    expect(currentUser.status).toBe(401);
 
     const loginAfter = await request(app).post('/api/v1/auth/login').send({
       email: 'deactivate@student.uiu.ac.bd',

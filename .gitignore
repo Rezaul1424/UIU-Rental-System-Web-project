@@ -65,6 +65,7 @@ pnpm-debug.log*
 # Local planning documents
 BACKEND_PLAN.md
 BACKEND_IMPLEMENTATION_DETAILS.md
+BACKEND_WORK_DIVISION.md
 
 # Local viva documentation (not committed)
 viva-docs/

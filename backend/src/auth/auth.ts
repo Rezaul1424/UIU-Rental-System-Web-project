@@ -42,6 +42,7 @@ const users = new Map<string, {
 
 const resetTokens = new Map<string, { email: string; expiresAt: number }>();
 const revokedTokens = new Set<string>();
+const issuedTokenUsers = new Map<string, string>();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'development-only-jwt-secret-change-this-value-1234';
 const persistentAuth = process.env.NODE_ENV !== 'test';
@@ -129,6 +130,7 @@ export async function registerUser(input: {
 }) {
   const email = normalizeEmail(input.email);
   const role = input.role ?? 'student';
+  const status: AuthStatus = role === 'landlord' ? 'pending' : 'active';
 
   if (persistentAuth) {
     const existing = await findPersistentUser(email);
@@ -137,7 +139,7 @@ export async function registerUser(input: {
     }
 
     const passwordHash = bcrypt.hashSync(input.password, 10);
-    await db.execute('INSERT INTO users (role, name, email, password_hash, student_id, status) VALUES (?, ?, ?, ?, ?, ?)', [role, input.name.trim(), email, passwordHash, input.studentId ?? null, 'active']);
+    await db.execute('INSERT INTO users (role, name, email, password_hash, student_id, status) VALUES (?, ?, ?, ?, ?, ?)', [role, input.name.trim(), email, passwordHash, input.studentId ?? null, status]);
     const user = await findPersistentUser(email);
     if (!user) throw new AppError(500, 'USER_REGISTRATION_FAILED', 'User registration failed');
     return { user };
@@ -153,7 +155,7 @@ export async function registerUser(input: {
     email,
     password: input.password,
     role,
-    status: 'active',
+    status,
     studentId: input.studentId,
   });
 
@@ -181,6 +183,7 @@ export async function verifyCredentials(email: string, password: string) {
     }
     if (user.status === 'suspended') throw new AppError(403, 'ACCOUNT_SUSPENDED', 'This account has been suspended');
     if (user.status === 'deactivated') throw new AppError(403, 'ACCOUNT_DEACTIVATED', 'This account is no longer active');
+    if (user.status === 'pending') throw new AppError(403, 'ACCOUNT_PENDING', 'This account is awaiting approval');
     return toAuthUser({ ...user, studentId: user.student_id });
   }
 
@@ -203,6 +206,10 @@ export async function verifyCredentials(email: string, password: string) {
     throw new AppError(403, 'ACCOUNT_DEACTIVATED', 'This account is no longer active');
   }
 
+  if (user.status === 'pending') {
+    throw new AppError(403, 'ACCOUNT_PENDING', 'This account is awaiting approval');
+  }
+
   return {
     id: user.id,
     name: user.name,
@@ -217,6 +224,7 @@ export async function createAuthToken(user: AuthUser): Promise<string> {
   const token = jwt.sign({ sub: user.id, role: user.role, email: user.email }, JWT_SECRET, {
     expiresIn: '12h',
   });
+  issuedTokenUsers.set(token, user.id);
   if (persistentAuth) {
     await db.execute('INSERT INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 12 HOUR))', [randomUUID(), Number(user.id), hashToken(token)]);
   }
@@ -227,6 +235,20 @@ export async function revokeAuthToken(token: string): Promise<void> {
   revokedTokens.add(token);
   if (persistentAuth) {
     await db.execute('UPDATE auth_sessions SET revoked_at = NOW() WHERE token_hash = ?', [hashToken(token)]);
+  }
+}
+
+export async function revokeUserTokens(userId: string | number): Promise<void> {
+  const normalizedUserId = String(userId);
+
+  for (const [token, tokenUserId] of issuedTokenUsers) {
+    if (tokenUserId === normalizedUserId) {
+      revokedTokens.add(token);
+    }
+  }
+
+  if (persistentAuth) {
+    await db.execute('UPDATE auth_sessions SET revoked_at = NOW() WHERE user_id = ? AND revoked_at IS NULL', [Number(userId)]);
   }
 }
 
@@ -287,6 +309,7 @@ export async function confirmPasswordReset(token: string, newPassword: string) {
     if (!reset) throw new AppError(400, 'INVALID_RESET_TOKEN', 'This reset token is invalid or expired');
     await db.execute('UPDATE users SET password_hash = ? WHERE id = ?', [bcrypt.hashSync(newPassword, 10), reset.user_id]);
     await db.execute('UPDATE password_reset_tokens SET used_at = NOW() WHERE token_hash = ?', [hashToken(token)]);
+    await revokeUserTokens(reset.user_id);
     return { message: 'Password reset successfully' };
   }
 
@@ -309,6 +332,7 @@ export async function confirmPasswordReset(token: string, newPassword: string) {
   user.resetToken = undefined;
   user.resetTokenExpiresAt = undefined;
   resetTokens.delete(token);
+  await revokeUserTokens(user.id);
 
   return { message: 'Password reset successfully' };
 }
@@ -318,6 +342,7 @@ export async function deactivateAccount(user: AuthUser, password: string) {
     const currentUser = await findPersistentUserWithPassword(user.email);
     if (!currentUser || !bcrypt.compareSync(password, currentUser.password_hash)) throw new AppError(401, 'INVALID_CREDENTIALS', 'Invalid email or password');
     await db.execute("UPDATE users SET status = 'deactivated' WHERE id = ?", [currentUser.id]);
+    await revokeUserTokens(currentUser.id);
     return { user: toAuthUser({ ...currentUser, status: 'deactivated', studentId: currentUser.student_id }) };
   }
 
@@ -331,6 +356,7 @@ export async function deactivateAccount(user: AuthUser, password: string) {
   }
 
   currentUser.status = 'deactivated';
+  await revokeUserTokens(currentUser.id);
 
   return {
     user: {
@@ -349,6 +375,7 @@ export async function suspendUserByEmail(email: string) {
     const user = await findPersistentUser(email);
     if (!user) throw new AppError(404, 'USER_NOT_FOUND', 'User not found');
     await db.execute("UPDATE users SET status = 'suspended' WHERE email = ?", [normalizeEmail(email)]);
+    await revokeUserTokens(user.id);
     return { user: { ...user, status: 'suspended' as const } };
   }
 
@@ -358,6 +385,7 @@ export async function suspendUserByEmail(email: string) {
   }
 
   user.status = 'suspended';
+  await revokeUserTokens(user.id);
 
   return {
     user: {
@@ -396,6 +424,7 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
       if (!user) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
       if (user.status === 'suspended') throw new AppError(403, 'ACCOUNT_SUSPENDED', 'This account has been suspended');
       if (user.status === 'deactivated') throw new AppError(403, 'ACCOUNT_DEACTIVATED', 'This account is no longer active');
+      if (user.status === 'pending') throw new AppError(403, 'ACCOUNT_PENDING', 'This account is awaiting approval');
       req.user = user;
       next();
     }).catch(next);
@@ -426,6 +455,7 @@ export const authRouter = {
   verifyCredentials,
   createAuthToken,
   revokeAuthToken,
+  revokeUserTokens,
   getUserByEmail,
   requestPasswordReset,
   confirmPasswordReset,
