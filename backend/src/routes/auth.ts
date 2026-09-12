@@ -14,6 +14,7 @@ import {
 } from '../auth/auth.js';
 import { AppError } from '../errors/AppError.js';
 import { buildRateLimiter } from '../security/authorization.js';
+import { recordAuditEvent } from '../security/audit.js';
 
 const registerSchema = z.object({
   name: z.string().trim().min(2),
@@ -168,6 +169,14 @@ router.post(
 
     const { email } = z.object({ email: z.string().trim().email() }).parse(req.body);
     const result = await suspendUserByEmail(email);
+    await recordAuditEvent({
+      actorId: authenticatedUser.id,
+      action: 'ACCOUNT_SUSPENDED',
+      resourceType: 'user',
+      resourceId: result.user.id,
+      newState: { status: result.user.status },
+      requestMetadata: { reason: typeof req.body.reason === 'string' ? req.body.reason.trim() : undefined },
+    });
     res.json(result);
   }),
 );

@@ -6,6 +6,7 @@ import type { RowDataPacket } from 'mysql2';
 import { z } from 'zod';
 import type { Request, Response, NextFunction } from 'express';
 import { AppError } from '../errors/AppError.js';
+import { recordAuditEvent } from '../security/audit.js';
 
 export const AuthRoleSchema = z.enum(['admin', 'landlord', 'student', 'guest']);
 export const AuthStatusSchema = z.enum(['active', 'pending', 'suspended', 'deactivated']);
@@ -142,6 +143,12 @@ export async function registerUser(input: {
     await db.execute('INSERT INTO users (role, name, email, password_hash, student_id, status) VALUES (?, ?, ?, ?, ?, ?)', [role, input.name.trim(), email, passwordHash, input.studentId ?? null, status]);
     const user = await findPersistentUser(email);
     if (!user) throw new AppError(500, 'USER_REGISTRATION_FAILED', 'User registration failed');
+    await recordAuditEvent({
+      action: 'ACCOUNT_REGISTERED',
+      resourceType: 'user',
+      resourceId: user.id,
+      newState: { role: user.role, status: user.status },
+    });
     return { user };
   }
 
@@ -162,6 +169,13 @@ export async function registerUser(input: {
   if (!user) {
     throw new AppError(500, 'USER_REGISTRATION_FAILED', 'User registration failed');
   }
+
+  await recordAuditEvent({
+    action: 'ACCOUNT_REGISTERED',
+    resourceType: 'user',
+    resourceId: user.id,
+    newState: { role: user.role, status: user.status },
+  });
 
   return {
     user: {
@@ -343,6 +357,14 @@ export async function deactivateAccount(user: AuthUser, password: string) {
     if (!currentUser || !bcrypt.compareSync(password, currentUser.password_hash)) throw new AppError(401, 'INVALID_CREDENTIALS', 'Invalid email or password');
     await db.execute("UPDATE users SET status = 'deactivated' WHERE id = ?", [currentUser.id]);
     await revokeUserTokens(currentUser.id);
+    await recordAuditEvent({
+      actorId: currentUser.id,
+      action: 'ACCOUNT_DEACTIVATED',
+      resourceType: 'user',
+      resourceId: String(currentUser.id),
+      previousState: { status: currentUser.status },
+      newState: { status: 'deactivated' },
+    });
     return { user: toAuthUser({ ...currentUser, status: 'deactivated', studentId: currentUser.student_id }) };
   }
 
@@ -357,6 +379,14 @@ export async function deactivateAccount(user: AuthUser, password: string) {
 
   currentUser.status = 'deactivated';
   await revokeUserTokens(currentUser.id);
+  await recordAuditEvent({
+    actorId: currentUser.id,
+    action: 'ACCOUNT_DEACTIVATED',
+    resourceType: 'user',
+    resourceId: currentUser.id,
+    previousState: { status: 'active' },
+    newState: { status: 'deactivated' },
+  });
 
   return {
     user: {

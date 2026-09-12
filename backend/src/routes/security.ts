@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { AppError } from '../errors/AppError.js';
-import { requireAuth, requireRole } from '../security/authorization.js';
+import { requireAuth, requireOwnership, requireRole } from '../security/authorization.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
 const router = Router();
@@ -8,16 +8,12 @@ const router = Router();
 router.get(
   '/profile/:userId',
   requireAuth,
+  requireOwnership('userId'),
   asyncHandler(async (req, res) => {
     const currentUser = req.user;
-    const targetUserId = req.params.userId;
 
     if (!currentUser) {
       throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
-    }
-
-    if (currentUser.id !== targetUserId && currentUser.role !== 'admin') {
-      throw new AppError(403, 'FORBIDDEN', 'You do not have permission to access this profile');
     }
 
     res.json({ user: currentUser });

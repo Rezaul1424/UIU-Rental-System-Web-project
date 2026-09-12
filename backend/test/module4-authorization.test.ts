@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../src/app.js';
 import { createAuthToken, registerUser } from '../src/auth/auth.js';
+import { clearAuditEvents, getAuditEvents } from '../src/security/audit.js';
 
 const app = buildApp();
 
 describe('Module 4 authorization and security rules', () => {
   beforeEach(() => {
     process.env.NODE_ENV = 'test';
+    clearAuditEvents();
   });
 
   it('applies the shared security headers to all responses', async () => {
@@ -112,5 +114,21 @@ describe('Module 4 authorization and security rules', () => {
 
     expect(response.status).toBe(429);
     expect(response.body.error.code).toBe('RATE_LIMIT_EXCEEDED');
+  });
+
+  it('records audit events without storing credentials', async () => {
+    const user = await request(app).post('/api/v1/auth/register').send({
+      name: 'Audited User',
+      email: 'audited@student.uiu.ac.bd',
+      password: 'StrongPass123!',
+      studentId: '01123456796',
+      role: 'student',
+    });
+
+    const events = getAuditEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0]?.action).toBe('ACCOUNT_REGISTERED');
+    expect(events[0]?.resourceId).toBe(user.body.user.id);
+    expect(JSON.stringify(events)).not.toContain('StrongPass123!');
   });
 });
