@@ -186,9 +186,11 @@ export const studentRepository: StudentRepository = {
       id: `${row.student_id}-${row.property_id}`,
       studentId: String(row.student_id),
       listingId: String(row.property_id),
+      listingId: String(row.property_code),
       createdAt: row.created_at.toISOString(),
       listing: {
         id: String(row.property_id),
+        id: String(row.property_code),
         title: row.title,
         priceBDT: Number(row.price),
         landlordName: row.landlord_name ?? undefined,
@@ -282,6 +284,7 @@ export const studentRepository: StudentRepository = {
     return rows.map((row) => ({
       id: String(row.id),
       propertyId: String(row.property_id),
+      listingId: String(row.property_code),
       landlordId: String(row.landlord_id),
       studentCardNo: row.student_card_no ?? undefined,
       contactPhone: row.contact_phone ?? undefined,
@@ -296,7 +299,7 @@ export const studentRepository: StudentRepository = {
   async submitApplication(studentId: string, payload: StudentApplicationPayload): Promise<StudentApplicationPayload & { id: string; status: 'under-review' | 'accepted' | 'rejected' | 'cancelled'; createdAt: string }> {
     if (useFixtures()) {
       const list = testApplications.get(studentId) ?? [];
-      if (list.some((application) => application.propertyId === payload.propertyId)) {
+      if (list.some((application) => application.propertyId === payload.propertyId && application.status !== 'cancelled')) {
         throw new AppError(409, 'DUPLICATE_APPLICATION', 'You already submitted an application for this property');
       }
       const application = {
@@ -326,7 +329,7 @@ export const studentRepository: StudentRepository = {
     const property = propertyRows[0];
     if (!property) throw new AppError(404, 'LISTING_NOT_FOUND', 'Listing does not exist');
 
-    const [existingRows] = await db.query<RowDataPacket[]>('SELECT id FROM applications WHERE student_id = ? AND property_id = ? LIMIT 1', [userId, propertyId]);
+    const [existingRows] = await db.query<RowDataPacket[]>('SELECT id FROM applications WHERE student_id = ? AND property_id = ? AND status != ? LIMIT 1', [userId, propertyId, 'cancelled']);
     const existing = existingRows[0] as RowDataPacket | undefined;
     if (existing?.id) throw new AppError(409, 'DUPLICATE_APPLICATION', 'You already submitted an application for this property');
 

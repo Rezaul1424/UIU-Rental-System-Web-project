@@ -28,16 +28,21 @@ export default function ApplicationsPage({ applications, listings, statusBadge, 
         <div className="space-y-3">
           {applications.map(app => {
             const l = listings.find(l => l.id === app.listingId)
-            if (!l) return null
+            const display = l ?? {
+              title: app.propertyId ? `Property ${app.propertyId}` : `Application #${app.id}`,
+              image: 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600&h=380&fit=crop&auto=format',
+              landlord: 'Landlord',
+              price: 0
+            }
             return (
               <div key={app.id ?? app.listingId} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-14 rounded-xl overflow-hidden flex-shrink-0">
-                    <img src={l.image} alt={l.title} className="w-full h-full object-cover" />
+                    <img src={display.image} alt={display.title} className="w-full h-full object-cover" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-[#1a1a18] text-sm">{l.title}</div>
-                    <div className="text-xs text-gray-500">{l.landlord} · ৳{l.price.toLocaleString()}/mo · Applied {app.date}</div>
+                    <div className="font-semibold text-[#1a1a18] text-sm">{display.title}</div>
+                    <div className="text-xs text-gray-500">{display.landlord} · {display.price > 0 ? `৳${display.price.toLocaleString()}/mo · ` : ''}Applied {app.date}</div>
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0">
                     {statusBadge(app.status)}

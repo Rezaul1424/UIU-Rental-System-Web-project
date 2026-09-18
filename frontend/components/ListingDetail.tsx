@@ -31,7 +31,9 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
   const [showReviewsModal, setShowReviewsModal] = useState(false)
   const pin = listingPins[listing.id] ?? { x: 50, y: 50 }
   const desc = listingDescriptions[listing.id] ?? 'A verified rental property near UIU campus.'
-  const images = listing.images ?? [{ room: 'Property', url: listing.image }]
+  const fallbackImg = listing.image || 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=600&h=380&fit=crop&auto=format'
+  const rawImages = listing.images?.filter(img => img?.url) ?? []
+  const images = rawImages.length > 0 ? rawImages : [{ room: 'Property', url: fallbackImg }]
   const prevImg = () => setCarouselIdx(i => (i - 1 + images.length) % images.length)
   const nextImg = () => setCarouselIdx(i => (i + 1) % images.length)
 
