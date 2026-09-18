@@ -66,6 +66,13 @@ type DbUser = RowDataPacket & {
   student_id?: string;
 };
 
+export type AdminUser = AuthUser & {
+  createdAt?: string;
+  updatedAt?: string;
+  propertyCount?: number;
+  applicationCount?: number;
+};
+
 type ResetRow = RowDataPacket & { user_id: number };
 
 function hashToken(token: string): string {
@@ -282,6 +289,122 @@ export async function getUserByEmail(email: string): Promise<AuthUser | undefine
   };
 }
 
+function toAdminUser(user: {
+  id: string | number;
+  name: string;
+  email: string;
+  role: AuthRole;
+  status: AuthStatus;
+  studentId?: string | null;
+  created_at?: Date | string;
+  updated_at?: Date | string;
+  property_count?: number | string;
+  application_count?: number | string;
+}): AdminUser {
+  return {
+    ...toAuthUser(user),
+    createdAt: user.created_at ? new Date(user.created_at).toISOString() : undefined,
+    updatedAt: user.updated_at ? new Date(user.updated_at).toISOString() : undefined,
+    propertyCount: user.property_count === undefined ? undefined : Number(user.property_count),
+    applicationCount: user.application_count === undefined ? undefined : Number(user.application_count),
+  };
+}
+
+export async function listAdminUsers(options: {
+  page: number;
+  limit: number;
+  q?: string;
+  role?: AuthRole;
+  status?: AuthStatus;
+  sortBy: 'createdAt' | 'name' | 'email' | 'status';
+  sortDirection: 'asc' | 'desc';
+}) {
+  if (!persistentAuth) {
+    const query = options.q?.toLowerCase();
+    const filtered = [...users.values()]
+      .filter((user) => !query || `${user.name} ${user.email}`.toLowerCase().includes(query))
+      .filter((user) => !options.role || user.role === options.role)
+      .filter((user) => !options.status || user.status === options.status)
+      .sort((left, right) => {
+        const leftValue = options.sortBy === 'name' ? left.name : options.sortBy === 'email' ? left.email : options.sortBy === 'status' ? left.status : left.id;
+        const rightValue = options.sortBy === 'name' ? right.name : options.sortBy === 'email' ? right.email : options.sortBy === 'status' ? right.status : right.id;
+        return leftValue.localeCompare(rightValue) * (options.sortDirection === 'asc' ? 1 : -1);
+      });
+    const start = (options.page - 1) * options.limit;
+    return {
+      data: filtered.slice(start, start + options.limit).map((user) => toAdminUser(user)),
+      totalItems: filtered.length,
+    };
+  }
+
+  const direction = options.sortDirection.toUpperCase();
+  const sortColumn = {
+    createdAt: 'u.created_at',
+    name: 'u.name',
+    email: 'u.email',
+    status: 'u.status',
+  }[options.sortBy];
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+  if (options.q) {
+    clauses.push('(u.name LIKE CONCAT(\'%\', ?, \'%\') OR u.email LIKE CONCAT(\'%\', ?, \'%\'))');
+    params.push(options.q, options.q);
+  }
+  if (options.role) { clauses.push('u.role = ?'); params.push(options.role); }
+  if (options.status) { clauses.push('u.status = ?'); params.push(options.status); }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  const [countRows] = await db.query<RowDataPacket[]>(`SELECT COUNT(*) AS total FROM users u ${where}`, params);
+  const [rows] = await db.query<DbUser[]>(
+    `SELECT u.id, u.name, u.email, u.role, u.status, u.student_id, u.created_at, u.updated_at,
+      (SELECT COUNT(*) FROM properties p WHERE p.landlord_id = u.id) AS property_count,
+      (SELECT COUNT(*) FROM applications a WHERE a.student_id = u.id OR a.landlord_id = u.id) AS application_count
+     FROM users u ${where} ORDER BY ${sortColumn} ${direction}, u.id ASC LIMIT ? OFFSET ?`,
+    [...params, options.limit, (options.page - 1) * options.limit],
+  );
+  return {
+    data: rows.map((user) => toAdminUser({ ...user, studentId: user.student_id })),
+    totalItems: Number(countRows[0]?.total ?? 0),
+  };
+}
+
+export async function getAdminUserById(id: string): Promise<AdminUser | undefined> {
+  if (!persistentAuth) {
+    const user = users.get(id) ?? [...users.values()].find((candidate) => candidate.id === id);
+    return user ? toAdminUser(user) : undefined;
+  }
+
+  const [rows] = await db.query<DbUser[]>(
+    `SELECT u.id, u.name, u.email, u.role, u.status, u.student_id, u.created_at, u.updated_at,
+      (SELECT COUNT(*) FROM properties p WHERE p.landlord_id = u.id) AS property_count,
+      (SELECT COUNT(*) FROM applications a WHERE a.student_id = u.id OR a.landlord_id = u.id) AS application_count
+     FROM users u WHERE u.id = ? LIMIT 1`,
+    [id],
+  );
+  const user = rows[0];
+  return user ? toAdminUser({ ...user, studentId: user.student_id }) : undefined;
+}
+
+export async function updateAdminUserStatus(id: string, status: AuthStatus): Promise<{ user: AdminUser; previousStatus: AuthStatus } | undefined> {
+  const current = await getAdminUserById(id);
+  if (!current) return undefined;
+  const previousStatus = current.status;
+
+  if (persistentAuth) {
+    await db.execute('UPDATE users SET status = ? WHERE id = ?', [status, id]);
+  } else {
+    const user = [...users.values()].find((candidate) => candidate.id === id);
+    if (!user) return undefined;
+    user.status = status;
+  }
+
+  if (status === 'suspended' || status === 'deactivated') {
+    await revokeUserTokens(id);
+  }
+
+  const updated = await getAdminUserById(id);
+  return updated ? { user: updated, previousStatus } : undefined;
+}
+
 export async function requestPasswordReset(email: string) {
   if (persistentAuth) {
     const user = await findPersistentUser(email);
@@ -487,6 +610,9 @@ export const authRouter = {
   revokeAuthToken,
   revokeUserTokens,
   getUserByEmail,
+  listAdminUsers,
+  getAdminUserById,
+  updateAdminUserStatus,
   requestPasswordReset,
   confirmPasswordReset,
   deactivateAccount,
