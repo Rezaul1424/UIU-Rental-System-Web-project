@@ -33,6 +33,7 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
   const [dashboardError, setDashboardError] = useState('')
   const [studentProfile, setStudentProfile] = useState<{ name?: string; email?: string; studentId?: string } | null>(null)
   const openStudentListing = (l: Listing) => { setViewListing(l); setPage('listing-detail') }
+  const [allListings, setAllListings] = useState<Listing[]>([])
 
   useEffect(() => {
     let active = true
@@ -42,7 +43,7 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
       setDashboardError('')
 
       try {
-        const [profileResult, favoriteResult, applicationResult, rentResult, receiptResult, leaseResult, maintenanceResult] = await Promise.all([
+        const [profileResult, favoriteResult, applicationResult, rentResult, receiptResult, leaseResult, maintenanceResult, listingsResult] = await Promise.all([
           getProfile().catch(() => null),
           getFavorites().catch(() => []),
           getApplications().catch(() => []),
@@ -50,6 +51,7 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
           getReceipts().catch(() => []),
           getLeases().catch(() => []),
           getMaintenanceRequests().catch(() => []),
+          fetchPublicListings().catch(() => []),
         ])
 
         if (!active) return
@@ -62,6 +64,7 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
         setRentSummary(Array.isArray(rentResult) ? rentResult : [])
         setReceipts(Array.isArray(receiptResult) ? receiptResult : [])
         setLeases(Array.isArray(leaseResult) ? leaseResult : [])
+        setAllListings(Array.isArray(listingsResult) ? listingsResult : [])
         setMyRequests(Array.isArray(maintenanceResult) ? maintenanceResult.map((request) => ({
           id: Number(request.id ?? Date.now()),
           issue: request.issue,
@@ -548,7 +551,7 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
           {page === 'applications' && (
             <ApplicationsPage
               applications={applications}
-              listings={browseListings}
+              listings={allListings}
               statusBadge={statusBadge}
               cancelApplication={cancelApplication}
               setPage={setPage}
