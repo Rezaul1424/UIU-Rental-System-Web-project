@@ -148,6 +148,110 @@ running separately.
 
 Built with **Node.js**, **Express**, and **MySQL**.
 
+## Shared API Contract
+
+The runtime validation source of truth is the Zod schema module at
+`src/contracts/api.ts`. OpenAPI is not maintained yet; new endpoints should add
+Zod schemas and focused contract tests before implementation.
+
+### URL and identifier rules
+
+- Versioned endpoints use `/api/v1/<resource>`, plural resource names, and standard HTTP methods.
+- Public listing URLs use the opaque `propertyCode` identifier, for example `/api/v1/listings/UIU-1001`.
+- Database integer IDs may be used internally, but must not be exposed when a stable public identifier exists.
+- JSON field names use camelCase. Database column names use snake_case.
+- API timestamps use UTC ISO 8601 strings with an explicit offset, for example `2026-09-18T14:30:00.000Z`.
+- Monetary API values use positive integer BDT amounts such as `18000`; calculations must not use binary floating-point values.
+
+### Pagination, filtering, and sorting
+
+List endpoints accept `page` and `limit`. Defaults are `page=1` and `limit=20`;
+the maximum limit is `100`. Responses use this shape:
+
+```json
+{
+  "data": [],
+  "meta": {
+    "page": 1,
+    "limit": 20,
+    "totalItems": 0,
+    "totalPages": 0,
+    "hasNextPage": false,
+    "hasPrevPage": false
+  }
+}
+```
+
+Search endpoints use `q` for text search, resource-specific query parameters
+for filters, `sortBy` for the selected field, and `sortDirection=asc|desc`.
+Invalid, negative, or unbounded values return `VALIDATION_ERROR`.
+
+### Roles and lifecycle statuses
+
+- Roles: `admin`, `landlord`, `student`, `guest`.
+- Account statuses: `active`, `pending`, `suspended`, `deactivated`.
+- Listing moderation statuses: `draft`, `pending`, `approved`, `rejected`, `suspended`, `archived`.
+- Listing availability statuses: `available`, `occupied`, `maintenance`.
+
+Moderation and physical availability are separate concepts. A listing must be
+approved and available to appear in the public browse API.
+
+### Required, optional, and nullable fields
+
+- Required fields are validated by the relevant Zod schema and must be present.
+- Optional response fields may be omitted when the value is unavailable.
+- Nullable database values are mapped to omitted API fields unless a contract explicitly defines `null`.
+- Unknown request fields should not be relied on; endpoint schemas define the accepted request shape.
+
+### Error response
+
+All expected errors use this shape:
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "priceBDT: Must be a positive integer",
+    "statusCode": 400
+  }
+}
+```
+
+### Listing response example
+
+```json
+{
+  "data": [{
+    "id": "UIU-1001",
+    "title": "Studio near Gate 3",
+    "type": "studio",
+    "description": "Cozy modern studio apartment near UIU.",
+    "priceBDT": 4200,
+    "currency": "BDT",
+    "status": "approved",
+    "facilities": ["AC", "WiFi"],
+    "images": [],
+    "address": {
+      "line1": "Road 4, House 12",
+      "city": "Dhaka",
+      "district": "Dhaka",
+      "latitude": 23.8148,
+      "longitude": 90.4256
+    },
+    "createdAt": "2026-09-01T00:00:00.000Z",
+    "updatedAt": "2026-09-01T00:00:00.000Z"
+  }],
+  "meta": {
+    "page": 1,
+    "limit": 20,
+    "totalItems": 1,
+    "totalPages": 1,
+    "hasNextPage": false,
+    "hasPrevPage": false
+  }
+}
+```
+
 ---
 
 ## 1. Database Setup (MySQL)
@@ -244,8 +348,8 @@ npm install
 npm run dev
 ```
 
-The server will be running at `http://localhost:5000`.
-Test health endpoint: `GET http://localhost:5000/api/health`.
+The server will be running at `http://localhost:4000`.
+Test health endpoint: `GET http://localhost:4000/api/v1/health`.
 
 ---
 

@@ -24,6 +24,14 @@ function quoteIdentifier(identifier: string): string {
   return `\`${identifier.replaceAll('`', '``')}\``;
 }
 
+function prepareBaselineSql(sql: string): string {
+  // The connection is already scoped to DB_NAME. Remove the baseline file's
+  // hard-coded database selection so custom local database names work.
+  return sql
+    .replace(/CREATE DATABASE IF NOT EXISTS `[^`]+`[\s\S]*?;\s*/i, '')
+    .replace(/USE `[^`]+`;\s*/i, '');
+}
+
 async function main(): Promise<void> {
   const admin = await mysql.createConnection(mysqlConfig);
   await admin.query(
@@ -59,7 +67,7 @@ async function main(): Promise<void> {
           path.join(backendRoot, 'database', 'schema.sql'),
           'utf8',
         );
-        await connection.query(baseline);
+        await connection.query(prepareBaselineSql(baseline));
       }
       await connection.query(
         "INSERT INTO _schema_migrations (name) VALUES ('000_baseline_schema')",
