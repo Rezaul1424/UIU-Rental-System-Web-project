@@ -188,7 +188,7 @@ export async function searchPublicListings(search: ListingSearch) {
   const where = buildWhere(search);
   const [countRows] = await db.query<RowDataPacket[]>(`SELECT COUNT(*) AS total FROM properties p WHERE ${where.sql}`, where.params);
   const total = Number(countRows[0]?.total ?? 0);
-  const [rows] = await db.query<PropertyRow[]>(`SELECT p.*, u.name AS landlord_name, a.latitude, a.longitude FROM properties p JOIN users u ON u.id = p.landlord_id LEFT JOIN addresses a ON a.property_id = p.id WHERE ${where.sql} ORDER BY ${sortColumns[search.sortBy]} ${search.sortDirection.toUpperCase()}, p.id ASC LIMIT ? OFFSET ?`, [...where.params, search.limit, (search.page - 1) * search.limit]);
+  const [rows] = await db.query<PropertyRow[]>(`SELECT p.*, u.name AS landlord_name, p.map_pin_x AS latitude, p.map_pin_y AS longitude FROM properties p JOIN users u ON u.id = p.landlord_id WHERE ${where.sql} ORDER BY ${sortColumns[search.sortBy]} ${search.sortDirection.toUpperCase()}, p.id ASC LIMIT ? OFFSET ?`, [...where.params, search.limit, (search.page - 1) * search.limit]);
   const [images] = await db.query<ImageRow[]>('SELECT property_id, id, image_url, is_primary FROM property_images WHERE property_id IN (?)', [rows.map((row) => row.id)]);
   const [amenities] = await db.query<AmenityRow[]>('SELECT pa.property_id, a.name FROM property_amenities pa JOIN amenities a ON a.id = pa.amenity_id WHERE pa.property_id IN (?)', [rows.map((row) => row.id)]);
   return { data: rows.map((row) => mapListing(row, images, amenities)), meta: pageMeta(search.page, search.limit, total) };
@@ -196,7 +196,7 @@ export async function searchPublicListings(search: ListingSearch) {
 
 export async function getPublicListing(identifier: string): Promise<Listing | undefined> {
   if (useFixtures()) return testListings.find((listing) => listing.id === identifier);
-  const [rows] = await db.query<PropertyRow[]>('SELECT p.*, u.name AS landlord_name, a.latitude, a.longitude FROM properties p JOIN users u ON u.id = p.landlord_id LEFT JOIN addresses a ON a.property_id = p.id WHERE p.status = \'available\' AND (p.property_code = ? OR CAST(p.id AS CHAR) = ?) LIMIT 1', [identifier, identifier]);
+  const [rows] = await db.query<PropertyRow[]>('SELECT p.*, u.name AS landlord_name, p.map_pin_x AS latitude, p.map_pin_y AS longitude FROM properties p JOIN users u ON u.id = p.landlord_id WHERE p.status = \'available\' AND (p.property_code = ? OR CAST(p.id AS CHAR) = ?) LIMIT 1', [identifier, identifier]);
   const row = rows[0];
   if (!row) return undefined;
   const [images] = await db.query<ImageRow[]>('SELECT property_id, id, image_url, is_primary FROM property_images WHERE property_id = ?', [row.id]);

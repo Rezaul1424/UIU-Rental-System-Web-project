@@ -22,8 +22,8 @@ type RoomCounts = {
 type EditListingPageProps = {
   editListingId: number | null
   myListings: Listing[]
-  editForm: { title: string; type: string; price: string; distance: string; description: string }
-  setEditForm: Dispatch<SetStateAction<{ title: string; type: string; price: string; distance: string; description: string }>>
+  editForm: { title: string; type: string; price: string; distance: string; description: string; status: string }
+  setEditForm: Dispatch<SetStateAction<{ title: string; type: string; price: string; distance: string; description: string; status: string }>>
   editFacilities: string[]
   toggleEditFacility: (facility: string) => void
   editAddrForm: AddressForm
@@ -249,12 +249,12 @@ export default function EditListingPage({
           <div className="bg-white rounded-2xl p-5 shadow-sm">
             <div className="font-semibold text-[#1a1a18] mb-1">Listing Status</div>
             <div className="space-y-2 mt-3">
-              {(['available', 'occupied', 'unavailable'] as const).map(status => (
-                <label key={status} className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-gray-50 cursor-pointer">
-                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${orig.status === status ? 'border-[#1a1a18]' : 'border-gray-200'}`}>
-                    {orig.status === status && <div className="w-2 h-2 bg-[#1a1a18] rounded-full" />}
+              {([['approved', 'Available'], ['occupied', 'Occupied'], ['suspended', 'Unavailable']] as const).map(([value, label]) => (
+                <label key={value} onClick={() => setEditForm(f => ({ ...f, status: value }))} className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-gray-50 cursor-pointer">
+                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${editForm.status === value ? 'border-[#1a1a18]' : 'border-gray-200'}`}>
+                    {editForm.status === value && <div className="w-2 h-2 bg-[#1a1a18] rounded-full" />}
                   </div>
-                  <span className="text-sm capitalize text-[#1a1a18]">{status}</span>
+                  <span className="text-sm capitalize text-[#1a1a18]">{label}</span>
                 </label>
               ))}
             </div>

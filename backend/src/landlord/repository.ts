@@ -33,6 +33,8 @@ type DbPropertyRow = RowDataPacket & {
   address_street?: string | null;
   address_area?: string | null;
   address_city?: string | null;
+  map_pin_x?: number | string | null;
+  map_pin_y?: number | string | null;
   created_at: Date;
   updated_at: Date;
 };
@@ -200,8 +202,8 @@ const normalizeListing = (row: DbPropertyRow, facilities: string[] = []): Landlo
     area: row.address_area ?? undefined,
     city: row.address_city ?? 'Dhaka',
     district: row.address_area ?? row.address_city ?? 'Dhaka',
-    latitude: 23.8148,
-    longitude: 90.4256,
+    latitude: Number(row.map_pin_x ?? 50),
+    longitude: Number(row.map_pin_y ?? 50),
   },
   status: toListingStatus(row.status),
   createdAt: row.created_at.toISOString(),

@@ -19,4 +19,7 @@ export type Listing = {
   roommateCapacity?: number
   parking?: string
   images?: { room: string; url: string }[]
+  mapPin?: { x: number; y: number }
+  street?: string
+  area?: string
 }

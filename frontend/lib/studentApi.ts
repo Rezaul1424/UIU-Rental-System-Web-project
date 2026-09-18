@@ -274,6 +274,11 @@ export const normalizeBackendListing = (item: any): Listing => {
           url: typeof img === 'string' ? img : (img.url || primaryImg),
         }))
       : undefined,
+    mapPin: item.address?.latitude != null && item.address?.longitude != null
+      ? { x: Number(item.address.latitude), y: Number(item.address.longitude) }
+      : undefined,
+    street: item.address?.line1,
+    area: item.address?.area,
   };
 };
 

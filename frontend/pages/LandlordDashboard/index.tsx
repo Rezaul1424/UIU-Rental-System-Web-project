@@ -121,7 +121,7 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
     return () => { active = false }
   }, [])
   const [editListingId, setEditListingId] = useState<number | null>(null)
-  const [editForm, setEditForm] = useState({ title: '', type: 'Single', price: '', distance: '', description: '' })
+  const [editForm, setEditForm] = useState({ title: '', type: 'Single', price: '', distance: '', description: '', status: 'approved' })
   const [editFacilities, setEditFacilities] = useState<string[]>([])
   const toggleEditFacility = (f: string) => setEditFacilities(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f])
   const [editAddrForm, setEditAddrForm] = useState({ street: '', area: '', city: 'Dhaka', district: 'Dhaka', postal: '' })
@@ -153,11 +153,12 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
     const l = myListings.find(m => m.id === id)
     if (!l) return
     setEditListingId(id)
-    setEditForm({ title: l.title, type: l.type, price: String(l.price), distance: String(l.distance), description: 'Comfortable and well-maintained unit with easy access to UIU campus.' })
+    setEditForm({ title: l.title, type: l.type, price: String(l.price), distance: String(l.distance), description: 'Comfortable and well-maintained unit with easy access to UIU campus.', status: l.status || 'approved' })
     setEditFacilities(l.facilities ?? [])
-    setEditAddrForm({ street: '', area: '', city: 'Dhaka', district: 'Dhaka', postal: '' })
-    setEditMapPin(null)
-    setEditMapKm('')
+    // Pre-populate address from listing data if available
+    setEditAddrForm({ street: l.street || '', area: l.area || '', city: 'Dhaka', district: 'Dhaka', postal: '' })
+    setEditMapPin(l.mapPin ?? null)
+    setEditMapKm(l.mapPin ? String(Math.hypot(l.mapPin.x - 50, l.mapPin.y - 50) * 0.042).slice(0, 3) : '')
     setPage('edit-listing')
   }
 
@@ -282,8 +283,9 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
           area: addrForm.area || 'UIU Area',
           city: addrForm.city || 'Dhaka',
           district: addrForm.district || 'Dhaka',
-          latitude: mapPin?.x ? Number(mapPin.x) / 100 : 23.8148,
-          longitude: mapPin?.y ? Number(mapPin.y) / 100 : 90.4256,
+          // map_pin_x/y stored as 0-100 percentage coords, not real lat/lng
+          latitude: mapPin?.x ?? 50,
+          longitude: mapPin?.y ?? 50,
         },
         status: 'approved',
       }
@@ -317,10 +319,11 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
           area: editAddrForm.area || 'UIU Area',
           city: editAddrForm.city || 'Dhaka',
           district: editAddrForm.district || 'Dhaka',
-          latitude: editMapPin?.x ? Number(editMapPin.x) / 100 : 23.8148,
-          longitude: editMapPin?.y ? Number(editMapPin.y) / 100 : 90.4256,
+          // map_pin_x/y stored as 0-100 percentage coords, not real lat/lng
+          latitude: editMapPin?.x ?? 50,
+          longitude: editMapPin?.y ?? 50,
         },
-        status: 'approved',
+        status: editForm.status || 'approved',
       }
 
       await updateListing(editListingId, payload)
@@ -545,7 +548,7 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
   }
 
   const isEditDirty = editListingId !== null && (() => {
-    const orig = listings.find(l => l.id === editListingId)
+    const orig = myListings.find(l => l.id === editListingId)
     if (!orig) return false
     return editForm.title !== orig.title || editForm.price !== String(orig.price) || editForm.distance !== String(orig.distance) || editForm.type !== orig.type
   })()

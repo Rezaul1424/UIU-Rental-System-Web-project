@@ -29,7 +29,7 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
 }) {
   const [carouselIdx, setCarouselIdx] = useState(0)
   const [showReviewsModal, setShowReviewsModal] = useState(false)
-  const pin = listingPins[listing.id] ?? { x: 50, y: 50 }
+  const pin = listing.mapPin ?? listingPins[listing.id] ?? { x: 50, y: 50 }
   const desc = listingDescriptions[listing.id] ?? 'A verified rental property near UIU campus.'
   const fallbackImg = listing.image || 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=600&h=380&fit=crop&auto=format'
   const rawImages = listing.images?.filter(img => img?.url) ?? []
