@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Listing } from '../../types'
+import { listings } from '../../data'
 import { Badge } from '../../components/ui'
 import NotificationBell from '../../components/NotificationBell'
 import { addFavorite, cancelApplication as cancelStudentApplication, fetchPublicListings, getApplications, getFavorites, getLeases, getMaintenanceRequests, getProfile, getReceipts, getRentSummary, removeFavorite, submitApplication as submitStudentApplication, submitMaintenanceRequest, type StudentApplication } from '../../lib/studentApi'
