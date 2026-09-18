@@ -115,6 +115,14 @@ const testApplications = new Map<string, TestApplicationRecord[]>();
 const testMaintenanceRequests = new Map<string, TestMaintenanceRecord[]>();
 const testLeases = new Map<string, TestLeaseRecord[]>();
 
+export function findTestListing(idOrCode: string): TestListingRecord | undefined {
+  for (const listings of testListings.values()) {
+    const found = listings.find((l) => l.id === idOrCode || l.propertyCode === idOrCode);
+    if (found) return found;
+  }
+  return undefined;
+}
+
 function useFixtures(): boolean {
   return process.env.NODE_ENV === 'test';
 }

@@ -11,6 +11,7 @@ import type {
   StudentReceiptSummary,
   StudentRentSummary,
 } from '../contracts/student.js';
+import { findTestListing } from '../landlord/repository.js';
 
 const db = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
@@ -133,10 +134,16 @@ function useFixtures(): boolean {
 
 const testFavorites = new Map<string, FavoriteListing[]>();
 const testApplications = new Map<string, Array<StudentApplicationPayload & { id: string; status: 'under-review' | 'accepted' | 'rejected' | 'cancelled'; createdAt: string }>>();
+const testMaintenanceRequests = new Map<string, StudentMaintenanceRequest[]>();
 
 async function resolvePropertyId(identifier: string): Promise<number> {
   const value = identifier.trim();
   if (!value) throw new AppError(400, 'INVALID_PROPERTY_ID', 'Listing identifier is required');
+
+  if (useFixtures()) {
+    const testListing = findTestListing(value);
+    if (testListing) return 1;
+  }
 
   const numericId = Number(value);
   if (Number.isFinite(numericId) && numericId > 0) {
@@ -340,6 +347,7 @@ export const studentRepository: StudentRepository = {
   },
 
   async getLeases(studentId: string): Promise<StudentLeaseSummary[]> {
+    if (useFixtures()) return [];
     const userId = Number(studentId);
     if (!Number.isFinite(userId)) return [];
 
@@ -365,6 +373,7 @@ export const studentRepository: StudentRepository = {
   },
 
   async getRentSummary(studentId: string): Promise<StudentRentSummary[]> {
+    if (useFixtures()) return [];
     const userId = Number(studentId);
     if (!Number.isFinite(userId)) return [];
 
@@ -385,6 +394,7 @@ export const studentRepository: StudentRepository = {
   },
 
   async getReceipts(studentId: string): Promise<StudentReceiptSummary[]> {
+    if (useFixtures()) return [];
     const userId = Number(studentId);
     if (!Number.isFinite(userId)) return [];
 
@@ -405,10 +415,13 @@ export const studentRepository: StudentRepository = {
   },
 
   async getMaintenanceRequests(studentId: string): Promise<StudentMaintenanceRequest[]> {
+    if (useFixtures()) {
+      return testMaintenanceRequests.get(studentId) ?? [];
+    }
     const userId = Number(studentId);
     if (!Number.isFinite(userId)) return [];
 
-    const [rows] = await db.query<MaintenanceRow[]>(`SELECT m.id, m.property_id, m.student_id, m.landlord_id, m.issue, m.description, m.priority, m.status, m.category, m.created_at, m.updated_at, JSON_ARRAY() AS attachments
+    const [rows] = await db.query<MaintenanceRow[]>(`SELECT m.id, m.property_id, m.student_id, m.landlord_id, m.issue, m.description, m.priority, m.status, m.created_at, m.updated_at
       FROM maintenance_requests m
       WHERE m.student_id = ?
       ORDER BY m.created_at DESC`, [userId]);
@@ -422,7 +435,7 @@ export const studentRepository: StudentRepository = {
       description: row.description ?? undefined,
       priority: row.priority,
       status: row.status,
-      attachments: row.attachments ? JSON.parse(row.attachments) as { name: string; type?: string; sizeBytes?: number }[] : undefined,
+      attachments: undefined,
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
     }));
@@ -435,6 +448,34 @@ export const studentRepository: StudentRepository = {
       throw new AppError(400, 'INVALID_MAINTENANCE_REQUEST', 'Maintenance request is invalid');
     }
 
+    if (useFixtures()) {
+      const listing = findTestListing(payload.propertyId);
+      if (!listing) {
+        throw new AppError(404, 'LISTING_NOT_FOUND', 'Listing does not exist');
+      }
+      if (Number(listing.landlordId) !== landlordId) {
+        throw new AppError(400, 'INVALID_LANDLORD', 'The selected landlord does not own this property');
+      }
+
+      const newReq: StudentMaintenanceRequest = {
+        id: `maint_${Date.now()}`,
+        propertyId: payload.propertyId,
+        landlordId: payload.landlordId,
+        category: payload.category,
+        issue: payload.issue,
+        description: payload.description,
+        priority: payload.priority,
+        status: 'open',
+        attachments: payload.attachments,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      const list = testMaintenanceRequests.get(studentId) ?? [];
+      list.unshift(newReq);
+      testMaintenanceRequests.set(studentId, list);
+      return newReq;
+    }
+
     const propertyId = await resolvePropertyId(payload.propertyId);
     const [propertyRows] = await db.query<RowDataPacket[]>('SELECT landlord_id FROM properties WHERE id = ? LIMIT 1', [propertyId]);
     const property = propertyRows[0];
@@ -444,7 +485,7 @@ export const studentRepository: StudentRepository = {
       throw new AppError(400, 'INVALID_LANDLORD', 'The selected landlord does not own this property');
     }
 
-    const [result] = await db.execute('INSERT INTO maintenance_requests (property_id, student_id, landlord_id, issue, description, priority, category, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [propertyId, userId, landlordId, payload.issue, payload.description ?? null, payload.priority, payload.category ?? null, 'open']);
+    const [result] = await db.execute('INSERT INTO maintenance_requests (property_id, student_id, landlord_id, issue, description, priority, status) VALUES (?, ?, ?, ?, ?, ?, ?)', [propertyId, userId, landlordId, payload.issue, payload.description ?? null, payload.priority, 'open']);
     const insertId = Number((result as { insertId?: number }).insertId ?? 0);
 
     return {
