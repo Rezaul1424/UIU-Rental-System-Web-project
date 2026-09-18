@@ -36,6 +36,9 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   const payload = contentType.includes('application/json') ? await response.json().catch(() => null) : null;
 
   if (!response.ok) {
+    if (response.status === 401) {
+      clearAuthSession();
+    }
     throw new Error(getErrorMessage(payload));
   }
 

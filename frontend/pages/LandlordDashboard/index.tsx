@@ -234,6 +234,33 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
     })))
   }
 
+  const normalizeListingType = (value: string | undefined): 'apartment' | 'house' | 'room' | 'studio' | 'duplex' | 'sublet' => {
+    const normalized = (value || 'Single').trim().toLowerCase()
+
+    switch (normalized) {
+      case 'single':
+        return 'studio'
+      case 'shared':
+        return 'room'
+      case 'mess':
+        return 'apartment'
+      case 'sublet':
+        return 'sublet'
+      case 'apartment':
+        return 'apartment'
+      case 'house':
+        return 'house'
+      case 'room':
+        return 'room'
+      case 'studio':
+        return 'studio'
+      case 'duplex':
+        return 'duplex'
+      default:
+        return 'apartment'
+    }
+  }
+
   const handleAddListing = async () => {
     if (!form.title.trim() || !form.price || !addrForm.street.trim()) {
       setDashboardError('Please complete the listing title, price, and address before publishing.')
@@ -244,7 +271,7 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
       const payload = {
         title: form.title.trim(),
         description: form.description.trim() || 'Available UIU-area rental property.',
-        type: (form.type || 'Single').toLowerCase() as 'apartment' | 'house' | 'room' | 'studio' | 'duplex' | 'sublet',
+        type: normalizeListingType(form.type),
         priceBDT: Number(form.price),
         bedrooms: roomCounts.bedroom || 1,
         roommateCapacity: Number(maxTenants || 1),
@@ -279,7 +306,7 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
       const payload = {
         title: editForm.title.trim(),
         description: editForm.description.trim() || 'Updated UIU-area rental property.',
-        type: (editForm.type || 'Single').toLowerCase() as 'apartment' | 'house' | 'room' | 'studio' | 'duplex' | 'sublet',
+        type: normalizeListingType(editForm.type),
         priceBDT: Number(editForm.price || 0),
         bedrooms: roomCounts.bedroom || 1,
         roommateCapacity: Number(maxTenants || 1),
