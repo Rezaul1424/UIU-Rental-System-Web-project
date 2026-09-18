@@ -6,7 +6,7 @@ type ApplicationsPageProps = {
   applications: Application[]
   listings: Listing[]
   statusBadge: (status: AppStatus) => ReactElement
-  cancelApplication: (listingId: number) => void
+  cancelApplication: (app: Application) => void
   setPage: (page: StudentPage) => void
 }
 
@@ -30,7 +30,7 @@ export default function ApplicationsPage({ applications, listings, statusBadge, 
             const l = listings.find(l => l.id === app.listingId)
             if (!l) return null
             return (
-              <div key={app.listingId} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+              <div key={app.id ?? app.listingId} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-14 rounded-xl overflow-hidden flex-shrink-0">
                     <img src={l.image} alt={l.title} className="w-full h-full object-cover" />
@@ -42,7 +42,7 @@ export default function ApplicationsPage({ applications, listings, statusBadge, 
                   <div className="flex items-center gap-3 flex-shrink-0">
                     {statusBadge(app.status)}
                     {app.status === 'under-review' && (
-                      <button onClick={() => cancelApplication(app.listingId)} className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors">Cancel</button>
+                      <button onClick={() => cancelApplication(app)} className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors">Cancel</button>
                     )}
                   </div>
                 </div>

@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Listing } from '../../types'
-import { listings } from '../../data'
 import { Badge } from '../../components/ui'
 import NotificationBell from '../../components/NotificationBell'
-import { addFavorite, getApplications, getFavorites, getLeases, getMaintenanceRequests, getProfile, getReceipts, getRentSummary, removeFavorite, submitApplication as submitStudentApplication, submitMaintenanceRequest, type StudentApplication } from '../../lib/studentApi'
+import { addFavorite, cancelApplication as cancelStudentApplication, fetchPublicListings, getApplications, getFavorites, getLeases, getMaintenanceRequests, getProfile, getReceipts, getRentSummary, removeFavorite, submitApplication as submitStudentApplication, submitMaintenanceRequest, type StudentApplication } from '../../lib/studentApi'
 import { studentNotifs } from './constants'
 import StudentSidebarNav from './Sidebar'
 import OverviewPage from './pages/OverviewPage'
@@ -109,13 +108,34 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
     }
   }
 
-  const filteredListings = listings.filter(l => {
-    if (typeFilter !== 'all' && l.type !== typeFilter) return false
-    if (distFilter !== 'all' && parseFloat(l.distance) > parseFloat(distFilter)) return false
-    if (l.price > maxPrice) return false
-    if (additionalFilters.includes('AC') && !l.facilities.includes('AC')) return false
-    if (additionalFilters.includes('WiFi') && !l.facilities.includes('WiFi')) return false
-    if (additionalFilters.includes('Parking') && !l.facilities.includes('Parking')) return false
+  // Browse listings – live from API
+  const [browseListings, setBrowseListings] = useState<Listing[]>([])
+  const [browseLoading, setBrowseLoading] = useState(false)
+
+  useEffect(() => {
+    if (page !== 'browse') return
+    let active = true
+    const load = async () => {
+      setBrowseLoading(true)
+      try {
+        const results = await fetchPublicListings({
+          type: typeFilter === 'all' ? undefined : typeFilter,
+          maxPrice,
+          maxDistance: distFilter === 'all' ? undefined : parseFloat(distFilter),
+          facilities: additionalFilters.length ? additionalFilters : undefined,
+        })
+        if (active) setBrowseListings(results)
+      } catch {
+        // keep previous listings on error
+      } finally {
+        if (active) setBrowseLoading(false)
+      }
+    }
+    load()
+    return () => { active = false }
+  }, [page, typeFilter, distFilter, maxPrice, additionalFilters])
+
+  const filteredListings = browseListings.filter(l => {
     if (bedroomFilter !== 'any') {
       const beds = l.rooms?.bedroom ?? 0
       if (bedroomFilter === '4+' && beds < 4) return false
@@ -132,8 +152,19 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
   // ── Applications ────────────────────────────────────────────────────────────
   const [applications, setApplications] = useState<Application[]>([])
   const hasApplied = (id: number) => applications.some(a => a.listingId === id && a.status !== 'cancelled')
-  const cancelApplication = (listingId: number) =>
-    setApplications(prev => prev.map(a => a.listingId === listingId ? { ...a, status: 'cancelled' } : a))
+  const cancelApplication = async (app: Application) => {
+    // Optimistic update
+    setApplications(prev => prev.map(a => a.id === app.id ? { ...a, status: 'cancelled' } : a))
+    try {
+      await cancelStudentApplication(app.id)
+      const refreshed = await getApplications().catch(() => [] as Application[])
+      setApplications(refreshed)
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Could not cancel application.')
+      const refreshed = await getApplications().catch(() => [] as Application[])
+      setApplications(refreshed)
+    }
+  }
 
   const [appForm, setAppForm] = useState({ studentId: '', phone: '', moveIn: '', message: '', employment: 'Student' })
   const handleSubmitApplication = async () => {
@@ -516,7 +547,7 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
           {page === 'applications' && (
             <ApplicationsPage
               applications={applications}
-              listings={listings}
+              listings={browseListings}
               statusBadge={statusBadge}
               cancelApplication={cancelApplication}
               setPage={setPage}

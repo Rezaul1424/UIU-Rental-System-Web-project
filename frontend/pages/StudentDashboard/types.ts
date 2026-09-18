@@ -2,7 +2,7 @@ export type StudentPage = 'overview' | 'browse' | 'listing-detail' | 'apply-form
 
 export type AppStatus = 'under-review' | 'accepted' | 'rejected' | 'cancelled'
 
-export type Application = { listingId: number; status: AppStatus; date: string }
+export type Application = { id?: string; listingId: number; status: AppStatus; date: string }
 
 export type Review = { id: number; landlord: string; property: string; listingId: number; landlordStars: number; propStars: number; text: string; date: string }
 

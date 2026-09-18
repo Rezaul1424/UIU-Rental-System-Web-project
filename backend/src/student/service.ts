@@ -29,6 +29,9 @@ export const studentService = {
   async submitApplication(studentId: string, payload: StudentApplicationPayload): Promise<StudentApplicationPayload & { id: string; status: 'under-review' | 'accepted' | 'rejected' | 'cancelled'; createdAt: string }> {
     return studentRepository.submitApplication(studentId, payload);
   },
+  async cancelApplication(studentId: string, applicationId: string): Promise<boolean> {
+    return studentRepository.cancelApplication(studentId, applicationId);
+  },
   async getLeases(studentId: string): Promise<StudentLeaseSummary[]> {
     return studentRepository.getLeases(studentId);
   },

@@ -29,6 +29,7 @@ export interface StudentRepository {
   removeFavorite(studentId: string, listingId: string): Promise<boolean>;
   getApplications(studentId: string): Promise<Array<StudentApplicationPayload & { id: string; status: 'under-review' | 'accepted' | 'rejected' | 'cancelled'; createdAt: string }>>;
   submitApplication(studentId: string, payload: StudentApplicationPayload): Promise<StudentApplicationPayload & { id: string; status: 'under-review' | 'accepted' | 'rejected' | 'cancelled'; createdAt: string }>;
+  cancelApplication(studentId: string, applicationId: string): Promise<boolean>;
   getLeases(studentId: string): Promise<StudentLeaseSummary[]>;
   getRentSummary(studentId: string): Promise<StudentRentSummary[]>;
   getReceipts(studentId: string): Promise<StudentReceiptSummary[]>;
@@ -344,6 +345,25 @@ export const studentRepository: StudentRepository = {
       status: 'under-review',
       createdAt: new Date().toISOString(),
     };
+  },
+
+  async cancelApplication(studentId: string, applicationId: string): Promise<boolean> {
+    if (useFixtures()) {
+      const list = testApplications.get(studentId) ?? [];
+      const app = list.find((a) => a.id === applicationId || a.propertyId === applicationId);
+      if (app) {
+        app.status = 'cancelled';
+        return true;
+      }
+      return false;
+    }
+
+    const userId = Number(studentId);
+    const appId = Number(applicationId);
+    if (!Number.isFinite(userId) || !Number.isFinite(appId)) return false;
+
+    await db.execute("UPDATE applications SET status = 'cancelled' WHERE id = ? AND student_id = ?", [appId, userId]);
+    return true;
   },
 
   async getLeases(studentId: string): Promise<StudentLeaseSummary[]> {

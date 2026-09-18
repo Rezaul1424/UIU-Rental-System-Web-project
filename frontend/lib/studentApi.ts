@@ -1,3 +1,4 @@
+import type { Listing } from '../types';
 import { api } from './api';
 
 const toListingId = (value: unknown) => {
@@ -212,3 +213,103 @@ export const submitMaintenanceRequest = async (payload: {
   description?: string;
   priority?: 'Low' | 'Medium' | 'High';
 }) => api.post('/api/v1/student/maintenance', payload);
+
+export const normalizeBackendListing = (item: any): Listing => {
+  const numericId = toListingId(item.id ?? item.propertyId ?? item.listingId);
+  const primaryImg =
+    item.images?.find((img: any) => img.isPrimary)?.url ||
+    item.images?.[0]?.url ||
+    item.image ||
+    'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=600&h=380&fit=crop&auto=format';
+
+  const typeMap: Record<string, string> = {
+    studio: 'Single',
+    room: 'Shared',
+    apartment: 'Mess',
+    sublet: 'Sublet',
+    house: 'Single',
+    duplex: 'Single',
+    single: 'Single',
+    shared: 'Shared',
+    mess: 'Mess',
+  };
+  const rawType = String(item.type || '').toLowerCase();
+  const normalizedType = typeMap[rawType] || item.type || 'Single';
+
+  let resolvedNumericId = numericId;
+  if (resolvedNumericId <= 0) {
+    if (typeof item.id === 'string') {
+      const match = item.id.match(/\d+/);
+      resolvedNumericId = match ? parseInt(match[0], 10) : 1;
+    } else {
+      resolvedNumericId = 1;
+    }
+  }
+
+  return {
+    id: resolvedNumericId,
+    title: item.title || 'Studio near Gate 3',
+    landlord: item.landlordName || item.landlord || 'Landlord',
+    type: normalizedType,
+    distance: item.distanceKm != null ? `${item.distanceKm} km` : (item.distance || '0.5 km'),
+    price: Number(item.priceBDT ?? item.price ?? 0),
+    status: item.status || 'available',
+    facilities: Array.isArray(item.facilities) ? item.facilities : [],
+    image: primaryImg,
+    propertyId: String(item.propertyCode || item.propertyId || item.id || `UIU-${resolvedNumericId}`),
+    rooms: item.rooms || {
+      bedroom: item.bedrooms ?? 1,
+      living: 0,
+      bathroom: 1,
+      kitchen: 1,
+      veranda: 0,
+    },
+    roomSizes: item.roomSizes || (Array.isArray(item.roomSizesSqFt) ? { bedroom: item.roomSizesSqFt[0] ?? 120 } : undefined),
+    totalSize: item.totalSizeSqFt ?? item.totalSize ?? 280,
+    roommateCapacity: item.roommateCapacity ?? 1,
+    parking: item.parkingAvailable ? 'Available' : (item.parking || 'Not Available'),
+    images: Array.isArray(item.images)
+      ? item.images.map((img: any) => ({
+          room: img.room || (img.isPrimary ? 'Main Room' : 'Room'),
+          url: typeof img === 'string' ? img : (img.url || primaryImg),
+        }))
+      : undefined,
+  };
+};
+
+export const fetchPublicListings = async (query?: {
+  type?: string;
+  maxPrice?: number;
+  maxDistance?: number;
+  facilities?: string[];
+  bedrooms?: number;
+  capacity?: number;
+  q?: string;
+}): Promise<Listing[]> => {
+  const params = new URLSearchParams();
+  if (query?.type && query.type !== 'all') {
+    const apiTypeMap: Record<string, string> = {
+      Single: 'studio',
+      Shared: 'room',
+      Mess: 'apartment',
+      Sublet: 'sublet',
+    };
+    params.set('type', apiTypeMap[query.type] || query.type.toLowerCase());
+  }
+  if (query?.maxPrice) params.set('maxPrice', String(query.maxPrice));
+  if (query?.maxDistance) params.set('maxDistance', String(query.maxDistance));
+  if (query?.facilities?.length) params.set('facilities', query.facilities.join(','));
+  if (query?.bedrooms) params.set('bedrooms', String(query.bedrooms));
+  if (query?.capacity) params.set('capacity', String(query.capacity));
+  if (query?.q) params.set('q', query.q);
+
+  const qs = params.toString();
+  const path = qs ? `/api/v1/listings?${qs}` : '/api/v1/listings';
+  const response = await api.get<{ data?: Array<any> } | Array<any>>(path);
+  const items = Array.isArray(response) ? response : Array.isArray(response?.data) ? response.data : [];
+  return items.map(normalizeBackendListing);
+};
+
+export const cancelApplication = async (applicationId: string | number) => {
+  return api.patch(`/api/v1/student/applications/${applicationId}/cancel`, {});
+};

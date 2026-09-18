@@ -106,6 +106,15 @@ router.post('/applications', asyncHandler(async (req, res) => {
   res.status(201).json({ data: application });
 }));
 
+router.patch('/applications/:applicationId/cancel', asyncHandler(async (req, res) => {
+  const currentUser = req.user;
+  if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+
+  const applicationId = z.string().trim().min(1).parse(req.params.applicationId);
+  const success = await studentService.cancelApplication(currentUser.id, applicationId);
+  res.json({ data: { success, applicationId, status: 'cancelled' } });
+}));
+
 router.get('/leases', asyncHandler(async (req, res) => {
   const currentUser = req.user;
   if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
