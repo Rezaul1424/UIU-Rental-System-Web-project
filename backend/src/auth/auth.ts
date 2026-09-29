@@ -451,13 +451,14 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
 
   try {
     const payload = jwt.verify(token, JWT_SECRET) as TokenPayload;
-    const sessionCheck = usePersistentAuth().then((canUseDb) => {
-      if (!canUseDb) return Promise.resolve([[], undefined] as const);
-      return db.query<RowDataPacket[]>('SELECT id FROM auth_sessions WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > NOW() LIMIT 1', [hashToken(token)]);
+    const sessionCheck = usePersistentAuth().then(async (canUseDb): Promise<boolean> => {
+      if (!canUseDb) return true;
+      const [sessions] = await db.query<RowDataPacket[]>('SELECT id FROM auth_sessions WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > NOW() LIMIT 1', [hashToken(token)]);
+      return Boolean(sessions?.[0]);
     });
 
-    void sessionCheck.then(([sessions]) => {
-      if (persistentAuth && !sessions[0]) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+    void sessionCheck.then((hasValidSession) => {
+      if (persistentAuth && !hasValidSession) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
       return getUserByEmail(payload.email);
     }).then((user) => {
       if (!user) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');

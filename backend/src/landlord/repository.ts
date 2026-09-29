@@ -108,6 +108,11 @@ type TestApplicationRecord = {
   studentId: string;
   landlordId: string;
   status: 'under-review' | 'accepted' | 'rejected' | 'cancelled';
+  moveInDate?: string;
+  employment?: string;
+  studentCardNo?: string;
+  contactPhone?: string;
+  message?: string;
   createdAt: string;
 };
 

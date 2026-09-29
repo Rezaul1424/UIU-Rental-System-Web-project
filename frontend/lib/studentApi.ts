@@ -67,6 +67,7 @@ export type StudentApplication = {
   id?: string;
   listingId: number;
   propertyId?: string;
+  propertyTitle?: string;
   landlordId?: string;
   status: 'under-review' | 'accepted' | 'rejected' | 'cancelled';
   date: string;
@@ -129,6 +130,7 @@ export const getApplications = async (): Promise<StudentApplication[]> => {
     id: application.id ?? application.applicationId,
     listingId: toListingId(application.listingId ?? application.propertyId ?? application.listing?.id ?? application.listing?.propertyId),
     propertyId: String(application.propertyId ?? application.listingId ?? application.listing?.id ?? ''),
+    propertyTitle: application.propertyTitle ?? application.listing?.title ?? application.property?.title,
     landlordId: application.landlordId ?? application.landlord?.id,
     status: normalizeStatus(application.status),
     date: toDateString(application.createdAt ?? application.updatedAt),

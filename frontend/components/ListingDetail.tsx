@@ -29,8 +29,12 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
 }) {
   const [carouselIdx, setCarouselIdx] = useState(0)
   const [showReviewsModal, setShowReviewsModal] = useState(false)
-  const pin = listing.mapPin ?? listingPins[listing.id] ?? { x: 50, y: 50 }
-  const desc = listingDescriptions[listing.id] ?? 'A verified rental property near UIU campus.'
+  const rawPin = listing.mapPin ?? listingPins[listing.id] ?? { x: 50, y: 50 }
+  const pin = {
+    x: Number.isFinite(Number(rawPin?.x)) ? Number(rawPin.x) : 50,
+    y: Number.isFinite(Number(rawPin?.y)) ? Number(rawPin.y) : 50,
+  }
+  const desc = listing.description || listingDescriptions[listing.id] || 'A verified rental property near UIU campus.'
   const fallbackImg = listing.image || 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=600&h=380&fit=crop&auto=format'
   const rawImages = listing.images?.filter(img => img?.url) ?? []
   const images = rawImages.length > 0 ? rawImages : [{ room: 'Property', url: fallbackImg }]
@@ -38,9 +42,9 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
   const nextImg = () => setCarouselIdx(i => (i + 1) % images.length)
 
   const sampleReviews = [
-    { name: 'Tanvir Ahmed', stars: 4, comment: 'Great landlord, very responsive. The property is well-maintained.', date: 'Jun 2026', property: listing.title },
-    { name: 'Sadia Islam', stars: 5, comment: 'Excellent condition, felt like home immediately. Highly recommend.', date: 'Apr 2026', property: listing.title },
-    { name: 'Rifat Hassan', stars: 3, comment: 'Average experience. Some maintenance issues took a while to resolve.', date: 'Feb 2026', property: listing.title },
+    { name: 'Tanvir Ahmed', stars: 4, comment: 'Great landlord, very responsive. The property is well-maintained.', date: 'Jun 2026', property: listing.title || 'UIU Rental' },
+    { name: 'Sadia Islam', stars: 5, comment: 'Excellent condition, felt like home immediately. Highly recommend.', date: 'Apr 2026', property: listing.title || 'UIU Rental' },
+    { name: 'Rifat Hassan', stars: 3, comment: 'Average experience. Some maintenance issues took a while to resolve.', date: 'Feb 2026', property: listing.title || 'UIU Rental' },
   ]
 
   return (
@@ -69,7 +73,7 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
               <svg width="16" height="16" viewBox="0 0 24 24" fill={isFavorited ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
             </button>
           )}
-          <span className="font-mono font-bold text-[#1a1a18] text-lg">৳{listing.price.toLocaleString()}</span>
+          <span className="font-mono font-bold text-[#1a1a18] text-lg">৳{(Number(listing.price) || 0).toLocaleString()}</span>
           <span className="text-xs text-gray-500 ml-1">/mo</span>
         </div>
         {/* Nav arrows */}
@@ -129,7 +133,7 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
           <div className="bg-white rounded-2xl p-5 shadow-sm">
             <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">Room Breakdown</div>
             <div className="grid grid-cols-2 gap-3">
-              {listing.rooms && Object.entries(listing.rooms).filter(([, v]) => v > 0).map(([room, count]) => {
+              {listing.rooms && typeof listing.rooms === 'object' && Object.entries(listing.rooms).filter(([, v]) => typeof v === 'number' && v > 0).map(([room, count]) => {
                 const sizeMap: Record<string, number | undefined> = listing.roomSizes ?? {}
                 const size = sizeMap[room]
                 const icons: Record<string, string> = { bedroom: '🛏', living: '🛋', bathroom: '🚿', kitchen: '🍳', veranda: '🌿' }
@@ -175,9 +179,10 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
           <div className="bg-white rounded-2xl p-5 shadow-sm">
             <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Facilities included</div>
             <div className="flex flex-wrap gap-2">
-              {listing.facilities.map(f => (
+              {(listing.facilities ?? []).map(f => (
                 <span key={f} className="bg-gray-100 text-[#1a1a18] border border-[#1a1a18]/20 px-3 py-2 rounded-full text-xs font-semibold">{f}</span>
               ))}
+              {!(listing.facilities?.length) && <span className="text-sm text-gray-400">No facilities listed</span>}
             </div>
           </div>
 
@@ -195,7 +200,7 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
             <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Landlord</div>
             <div className="flex items-center gap-3 mb-3">
               <div className="w-11 h-11 bg-[#1a1a18] rounded-full flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
-                {listing.landlord[0]}
+                {(listing.landlord || 'L')[0]}
               </div>
               <div>
                 <div className="font-semibold text-[#1a1a18]">{listing.landlord}</div>
@@ -218,10 +223,10 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
             {[
               ['Property ID', listing.propertyId ?? '—'],
               ['Availability', listing.status === 'available' ? 'Available now' : 'Currently occupied'],
-              ['Room type', listing.type],
-              ['Distance', listing.distance + ' from UIU'],
-              ['Monthly rent', '৳' + listing.price.toLocaleString()],
-              ['Deposit', '৳' + (listing.price * 2).toLocaleString() + ' (2 months)'],
+              ['Room type', listing.type || 'Single'],
+              ['Distance', (listing.distance || '0.5 km') + ' from UIU'],
+              ['Monthly rent', '৳' + (Number(listing.price) || 0).toLocaleString()],
+              ['Deposit', '৳' + ((Number(listing.price) || 0) * 2).toLocaleString() + ' (2 months)'],
               ['Utilities', 'Water included'],
             ].map(([k, v]) => (
               <div key={k} className="flex justify-between text-sm border-b border-gray-100 pb-2 last:border-0 last:pb-0">

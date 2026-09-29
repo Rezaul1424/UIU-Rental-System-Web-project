@@ -47,7 +47,7 @@ router.get('/profile', asyncHandler(async (req, res) => {
     name: currentUser.name,
     email: currentUser.email,
     studentId: currentUser.studentId,
-    phone: currentUser.phone,
+    phone: (currentUser as any).phone ?? undefined,
     role: currentUser.role,
     status: currentUser.status,
   });
@@ -127,6 +127,9 @@ router.patch('/applications/:applicationId/cancel', asyncHandler(async (req, res
 
   const applicationId = z.string().trim().min(1).parse(req.params.applicationId);
   const success = await studentService.cancelApplication(currentUser.id, applicationId);
+  if (!success) {
+    throw new AppError(404, 'APPLICATION_NOT_FOUND', 'Application could not be found to cancel');
+  }
   res.json({ data: { success, applicationId, status: 'cancelled' } });
 }));
 

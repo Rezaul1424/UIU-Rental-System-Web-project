@@ -217,12 +217,10 @@ export const studentRepository: StudentRepository = {
     return rows.map((row) => ({
       id: `${row.student_id}-${row.property_id}`,
       studentId: String(row.student_id),
-      listingId: String(row.property_id),
-      listingId: String(row.property_code),
+      listingId: String(row.property_code ?? row.property_id),
       createdAt: row.created_at.toISOString(),
       listing: {
-        id: String(row.property_id),
-        id: String(row.property_code),
+        id: String(row.property_code ?? row.property_id),
         title: row.title,
         priceBDT: Number(row.price),
         landlordName: row.landlord_name ?? undefined,
@@ -301,7 +299,19 @@ export const studentRepository: StudentRepository = {
 
   async getApplications(studentId: string): Promise<Array<StudentApplicationPayload & { id: string; status: 'under-review' | 'accepted' | 'rejected' | 'cancelled'; createdAt: string }>> {
     if (useFixtures()) {
-      return testApplications.get(studentId) ?? [];
+      const list = testApplications.get(studentId) ?? [];
+      return list.map((application) => ({
+        id: application.id,
+        propertyId: application.propertyId,
+        landlordId: application.landlordId,
+        moveInDate: application.moveInDate ?? new Date().toISOString().slice(0, 10),
+        employment: application.employment ?? 'Student',
+        studentCardNo: application.studentCardNo,
+        contactPhone: application.contactPhone,
+        message: application.message,
+        status: application.status,
+        createdAt: application.createdAt,
+      }));
     }
 
     const userId = Number(studentId);
@@ -317,6 +327,7 @@ export const studentRepository: StudentRepository = {
       id: String(row.id),
       propertyId: String(row.property_id),
       listingId: String(row.property_code),
+      propertyTitle: row.property_title ?? undefined,
       landlordId: String(row.landlord_id),
       studentCardNo: row.student_card_no ?? undefined,
       contactPhone: row.contact_phone ?? undefined,
@@ -339,6 +350,7 @@ export const studentRepository: StudentRepository = {
       const application = {
         id: `${studentId}-${payload.propertyId}`,
         propertyId: testListing?.id || payload.propertyId,
+        studentId,
         landlordId,
         studentCardNo: payload.studentCardNo,
         contactPhone: payload.contactPhone,
@@ -396,11 +408,32 @@ export const studentRepository: StudentRepository = {
     }
 
     const userId = Number(studentId);
-    const appId = Number(applicationId);
-    if (!Number.isFinite(userId) || !Number.isFinite(appId)) return false;
+    if (!Number.isFinite(userId)) return false;
 
-    await db.execute("UPDATE applications SET status = 'cancelled' WHERE id = ? AND student_id = ?", [appId, userId]);
-    return true;
+    const appId = Number(applicationId);
+    if (Number.isFinite(appId) && appId > 0) {
+      const [res] = await db.execute("UPDATE applications SET status = 'cancelled' WHERE id = ? AND student_id = ?", [appId, userId]);
+      if ((res as { affectedRows?: number }).affectedRows && (res as { affectedRows: number }).affectedRows > 0) {
+        return true;
+      }
+
+      const [resProp] = await db.execute("UPDATE applications SET status = 'cancelled' WHERE property_id = ? AND student_id = ? AND status != 'cancelled'", [appId, userId]);
+      if ((resProp as { affectedRows?: number }).affectedRows && (resProp as { affectedRows: number }).affectedRows > 0) {
+        return true;
+      }
+    }
+
+    try {
+      const resolvedId = await resolvePropertyId(applicationId);
+      const [resCode] = await db.execute("UPDATE applications SET status = 'cancelled' WHERE property_id = ? AND student_id = ? AND status != 'cancelled'", [resolvedId, userId]);
+      if ((resCode as { affectedRows?: number }).affectedRows && (resCode as { affectedRows: number }).affectedRows > 0) {
+        return true;
+      }
+    } catch {
+      // not a property code
+    }
+
+    return false;
   },
 
   async getLeases(studentId: string): Promise<StudentLeaseSummary[]> {

@@ -159,12 +159,61 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
 
   // ── Applications ────────────────────────────────────────────────────────────
   const [applications, setApplications] = useState<Application[]>([])
-  const hasApplied = (id: number) => applications.some(a => a.listingId === id && a.status !== 'cancelled')
+  const hasApplied = (id: number) => applications.some(a => (a.listingId === id || Number(a.propertyId) === id) && a.status !== 'cancelled')
+  const openApplicationListing = (app: Application) => {
+    const matched = allListings.find(l => l.id === app.listingId || String(l.id) === app.propertyId || l.propertyId === app.propertyId)
+      ?? listings.find(l => l.id === app.listingId)
+    if (matched) {
+      setViewListing(matched)
+      setPage('listing-detail')
+    } else {
+      const fallbackListing: Listing = {
+        id: app.listingId || 1,
+        title: app.propertyTitle || (app.propertyId ? `Property ${app.propertyId}` : 'UIU Rental Property'),
+        landlord: 'UIU Landlord',
+        type: 'Single',
+        distance: '0.5 km',
+        price: 5000,
+        status: 'available',
+        facilities: ['WiFi', 'Water'],
+        image: 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600&h=380&fit=crop&auto=format',
+        propertyId: app.propertyId || `UIU-${app.listingId}`,
+      }
+      setViewListing(fallbackListing)
+      setPage('listing-detail')
+    }
+  }
+  const onReApply = (app: Application) => {
+    // Find matching listing from allListings or construct a minimal listing object
+    const matchedListing = allListings.find(l => l.id === app.listingId || String(l.id) === app.propertyId || l.propertyId === app.propertyId)
+      ?? listings.find(l => l.id === app.listingId)
+    if (matchedListing) {
+      setApplyListing(matchedListing)
+      setPage('apply-form')
+    } else {
+      const fallbackListing: Listing = {
+        id: app.listingId || 1,
+        title: app.propertyTitle || (app.propertyId ? `Property ${app.propertyId}` : 'UIU Rental Property'),
+        landlord: 'UIU Landlord',
+        type: 'Single',
+        distance: '0.5 km',
+        price: 5000,
+        status: 'available',
+        facilities: ['WiFi', 'Water'],
+        image: 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600&h=380&fit=crop&auto=format',
+        propertyId: app.propertyId || `UIU-${app.listingId}`,
+      }
+      setApplyListing(fallbackListing)
+      setPage('apply-form')
+    }
+  }
   const cancelApplication = async (app: Application) => {
+    const targetId = app.id || app.propertyId || String(app.listingId)
+    if (!targetId) return
     // Optimistic update
-    setApplications(prev => prev.map(a => a.id === app.id ? { ...a, status: 'cancelled' } : a))
+    setApplications(prev => prev.map(a => (a.id === app.id || a.propertyId === app.propertyId) ? { ...a, status: 'cancelled' } : a))
     try {
-      await cancelStudentApplication(app.id)
+      await cancelStudentApplication(targetId)
       const refreshed = await getApplications().catch(() => [] as Application[])
       setApplications(refreshed)
     } catch (error) {
@@ -543,28 +592,37 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
             />
           )}
 
-          {page === 'listing-detail' && viewListing && (
-            <ListingDetailViewPage
-              listing={viewListing}
-              onBack={() => setPage('browse')}
-              isFavorited={favorites.includes(viewListing.id)}
-              onToggleFavorite={() => toggleFavorite(viewListing.id)}
-              actions={
-                <>
-                  <button
-                    onClick={() => { setApplyListing(viewListing); setPage('apply-form') }}
-                    disabled={hasApplied(viewListing.id) || viewListing.status === 'occupied'}
-                    className={`w-full text-sm font-semibold py-3 rounded-xl transition-colors ${hasApplied(viewListing.id) ? 'bg-emerald-50 text-emerald-700 cursor-default' : viewListing.status === 'occupied' ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#1a1a18] text-white hover:bg-[#333]'}`}
-                  >
-                    {hasApplied(viewListing.id) ? '✓ Already Applied' : viewListing.status === 'occupied' ? 'Unit Occupied' : 'Apply for this Property'}
-                  </button>
-                  <button onClick={() => openChatWith(viewListing.landlord)} className="w-full border border-gray-200 text-[#1a1a18] text-sm font-semibold py-3 rounded-xl hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
-                    💬 Chat with {viewListing.landlord.split(' ')[0]}
-                  </button>
-                  <button onClick={() => setPage('browse')} className="w-full border border-gray-200 text-gray-500 text-sm font-semibold py-3 rounded-xl hover:bg-gray-50 transition-colors">Back to Browse</button>
-                </>
-              }
-            />
+          {page === 'listing-detail' && (
+            viewListing ? (
+              <ListingDetailViewPage
+                listing={viewListing}
+                onBack={() => setPage('browse')}
+                isFavorited={favorites.includes(viewListing.id)}
+                onToggleFavorite={() => toggleFavorite(viewListing.id)}
+                actions={
+                  <>
+                    <button
+                      onClick={() => { setApplyListing(viewListing); setPage('apply-form') }}
+                      disabled={hasApplied(viewListing.id) || viewListing.status === 'occupied'}
+                      className={`w-full text-sm font-semibold py-3 rounded-xl transition-colors ${hasApplied(viewListing.id) ? 'bg-emerald-50 text-emerald-700 cursor-default' : viewListing.status === 'occupied' ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#1a1a18] text-white hover:bg-[#333]'}`}
+                    >
+                      {hasApplied(viewListing.id) ? '✓ Already Applied' : viewListing.status === 'occupied' ? 'Unit Occupied' : 'Apply for this Property'}
+                    </button>
+                    <button onClick={() => openChatWith(viewListing.landlord || 'Landlord')} className="w-full border border-gray-200 text-[#1a1a18] text-sm font-semibold py-3 rounded-xl hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
+                      💬 Chat with {(viewListing.landlord || 'Landlord').split(' ')[0]}
+                    </button>
+                    <button onClick={() => setPage('browse')} className="w-full border border-gray-200 text-gray-500 text-sm font-semibold py-3 rounded-xl hover:bg-gray-50 transition-colors">Back to Browse</button>
+                  </>
+                }
+              />
+            ) : (
+              <div className="bg-white rounded-2xl p-8 text-center border border-gray-200 shadow-sm my-6 max-w-lg mx-auto">
+                <div className="text-3xl mb-2">🏠</div>
+                <div className="text-base font-semibold text-[#111827]">Property Details</div>
+                <div className="text-sm text-gray-500 mt-1 mb-4">Please select a property from browse to view full details.</div>
+                <button onClick={() => setPage('browse')} className="bg-[#111827] text-white text-sm font-semibold px-4 py-2 rounded-xl">Browse Listings</button>
+              </div>
+            )
           )}
 
           {page === 'apply-form' && applyListing && (
@@ -584,6 +642,8 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
               listings={allListings}
               statusBadge={statusBadge}
               cancelApplication={cancelApplication}
+              onReApply={onReApply}
+              onViewListing={openApplicationListing}
               setPage={setPage}
             />
           )}
