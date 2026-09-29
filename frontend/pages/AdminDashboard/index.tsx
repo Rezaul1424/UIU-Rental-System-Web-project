@@ -1,9 +1,20 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Listing } from '../../types'
 import { listings, maintenanceRequests, EXT_LANDLORDS, EXT_STUDENTS } from '../../data'
 import type { LandlordRow, StudentRow, SortDir } from '../../data'
 import ListingDetailPage from '../../components/ListingDetail'
 import NotificationBell from '../../components/NotificationBell'
+import { fetchPublicListings } from '../../lib/studentApi'
+import {
+  getAdminOverview,
+  getAdminUsers,
+  updateAdminUserStatus,
+  deleteAdminUser,
+  getAdminComplaints,
+  updateAdminComplaintStatus,
+  replyToAdminComplaint,
+  type AdminOverviewMetrics,
+} from '../../lib/adminApi'
 import { adminNotifs } from './constants'
 import AdminSidebarNav, { type AdminPage } from './Sidebar'
 import OverviewPage from './Overview'
@@ -25,7 +36,11 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
   const [categories, setCategories] = useState(['Single', 'Shared', 'Mess', 'Sublet'])
   const [newCat, setNewCat] = useState('')
 
-  const [adminComplaints] = useState<AdminComplaint[]>([
+  const [adminListings, setAdminListings] = useState<Listing[]>(listings)
+  const [adminLoading, setAdminLoading] = useState(false)
+  const [overviewMetrics, setOverviewMetrics] = useState<AdminOverviewMetrics | null>(null)
+
+  const [adminComplaints, setAdminComplaints] = useState<AdminComplaint[]>([
     { id: 'CMP-001', from: 'Tanvir Ahmed', fromType: 'Student', against: 'Rahman Faruk', property: 'Studio near Gate 3', category: 'Maintenance Neglect', date: '22 Jul 2026', status: 'Under Review', description: 'Reported the AC issue on July 10th but no response received from the landlord.' },
     { id: 'CMP-002', from: 'Rahman Faruk', fromType: 'Landlord', against: 'Sadia Islam', property: 'Shared Mess – South Campus', category: 'Late Payment', date: '18 Jul 2026', status: 'Submitted', description: 'Rent for July 2026 has not been paid despite multiple reminders.' },
     { id: 'CMP-003', from: 'Sadia Islam', fromType: 'Student', against: 'Nusrat Jahan', property: 'Shared Mess – South Campus', category: 'Privacy Violation', date: '10 Jul 2026', status: 'Responded', description: 'Landlord entered the room without prior notice on multiple occasions.' },
@@ -79,9 +94,81 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
   const lPagedRows = lSorted.slice((lPage - 1) * L_PAGE, lPage * L_PAGE)
   const lProfile = lRows.find(r => r.id === lProfileId)
 
-  const approveLandlordRow = (id: string) => setLRows(rs => rs.map(r => r.id === id ? { ...r, status: 'active' } : r))
-  const suspendLandlordRow = (id: string) => setLRows(rs => rs.map(r => r.id === id ? { ...r, status: 'suspended' } : r))
-  const removeLandlordRow = (id: string) => { setLRows(rs => rs.filter(r => r.id !== id)); setLProfileId(null) }
+  useEffect(() => {
+    let active = true
+
+    const loadAdminData = async () => {
+      setAdminLoading(true)
+      try {
+        const [overviewResult, usersResult, complaintsResult, liveListings] = await Promise.all([
+          getAdminOverview().catch(() => null),
+          getAdminUsers().catch(() => null),
+          getAdminComplaints().catch(() => null),
+          fetchPublicListings().catch(() => []),
+        ])
+
+        if (!active) return
+
+        if (overviewResult) {
+          setOverviewMetrics(overviewResult)
+        }
+        if (usersResult) {
+          if (Array.isArray(usersResult.landlords) && usersResult.landlords.length > 0) {
+            setLRows(usersResult.landlords)
+          }
+          if (Array.isArray(usersResult.students) && usersResult.students.length > 0) {
+            setSRows(usersResult.students)
+          }
+        }
+        if (complaintsResult) {
+          if (Array.isArray(complaintsResult.complaints) && complaintsResult.complaints.length > 0) {
+            setAdminComplaints(complaintsResult.complaints)
+          }
+          if (complaintsResult.threads && Object.keys(complaintsResult.threads).length > 0) {
+            setComplaintThreads(complaintsResult.threads)
+          }
+        }
+        if (Array.isArray(liveListings) && liveListings.length > 0) {
+          setAdminListings(liveListings)
+        }
+      } catch (err) {
+        console.error('Failed to load admin data:', err)
+      } finally {
+        if (active) setAdminLoading(false)
+      }
+    }
+
+    loadAdminData()
+    return () => { active = false }
+  }, [])
+
+  const approveLandlordRow = async (id: string) => {
+    setLRows(rs => rs.map(r => r.id === id ? { ...r, status: 'active' } : r))
+    try {
+      await updateAdminUserStatus(id, 'active')
+    } catch (err) {
+      console.error('Failed to approve landlord:', err)
+    }
+  }
+
+  const suspendLandlordRow = async (id: string) => {
+    setLRows(rs => rs.map(r => r.id === id ? { ...r, status: 'suspended' } : r))
+    try {
+      await updateAdminUserStatus(id, 'suspended')
+    } catch (err) {
+      console.error('Failed to suspend landlord:', err)
+    }
+  }
+
+  const removeLandlordRow = async (id: string) => {
+    setLRows(rs => rs.filter(r => r.id !== id))
+    setLProfileId(null)
+    try {
+      await deleteAdminUser(id)
+    } catch (err) {
+      console.error('Failed to remove landlord:', err)
+    }
+  }
 
   const [sRows, setSRows] = useState<StudentRow[]>(EXT_STUDENTS)
   const [sSearch, setSSearch] = useState('')
@@ -111,9 +198,49 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
   const sPagedRows = sSorted.slice((sPage - 1) * S_PAGE, sPage * S_PAGE)
   const sProfile = sRows.find(r => r.id === sProfileId)
 
-  const approveStudentRow = (id: string) => setSRows(rs => rs.map(r => r.id === id ? { ...r, status: 'active' } : r))
-  const suspendStudentRow = (id: string) => setSRows(rs => rs.map(r => r.id === id ? { ...r, status: 'suspended' } : r))
-  const removeStudentRow = (id: string) => { setSRows(rs => rs.filter(r => r.id !== id)); setSProfileId(null) }
+  const approveStudentRow = async (id: string) => {
+    setSRows(rs => rs.map(r => r.id === id ? { ...r, status: 'active' } : r))
+    try {
+      await updateAdminUserStatus(id, 'active')
+    } catch (err) {
+      console.error('Failed to approve student:', err)
+    }
+  }
+
+  const suspendStudentRow = async (id: string) => {
+    setSRows(rs => rs.map(r => r.id === id ? { ...r, status: 'suspended' } : r))
+    try {
+      await updateAdminUserStatus(id, 'suspended')
+    } catch (err) {
+      console.error('Failed to suspend student:', err)
+    }
+  }
+
+  const removeStudentRow = async (id: string) => {
+    setSRows(rs => rs.filter(r => r.id !== id))
+    setSProfileId(null)
+    try {
+      await deleteAdminUser(id)
+    } catch (err) {
+      console.error('Failed to remove student:', err)
+    }
+  }
+
+  const handleComplaintStatusChange = async (complaintId: string, newStatus: AdminComplaint['status']) => {
+    try {
+      await updateAdminComplaintStatus(complaintId, newStatus)
+    } catch (err) {
+      console.error('Failed to update complaint status:', err)
+    }
+  }
+
+  const handleComplaintReply = async (complaintId: string, replyText: string) => {
+    try {
+      await replyToAdminComplaint(complaintId, replyText)
+    } catch (err) {
+      console.error('Failed to reply to complaint:', err)
+    }
+  }
 
   const pendingLandlords = lRows.filter(r => r.status === 'pending').length
   const pendingStudents = sRows.filter(r => r.status === 'pending').length
@@ -151,7 +278,7 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
         <div className="px-6 pb-6 max-w-6xl mx-auto space-y-6">
           {page === 'overview' && (
             <OverviewPage
-              listings={listings}
+              listings={adminListings}
               lRows={lRows}
               sRows={sRows}
               pendingLandlords={pendingLandlords}
@@ -206,7 +333,7 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
 
           {page === 'categories' && (
             <CategoriesPage
-              listings={listings}
+              listings={adminListings}
               categories={categories}
               setCategories={setCategories}
               newCat={newCat}
@@ -223,7 +350,7 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
 
           {page === 'reports' && (
             <ReportsPage
-              listings={listings}
+              listings={adminListings}
               lRows={lRows}
               sRows={sRows}
               maintenanceRequests={maintenanceRequests}
@@ -247,6 +374,7 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
           {page === 'complaints' && (
             <ComplaintsPage
               adminComplaints={adminComplaints}
+              setAdminComplaints={setAdminComplaints}
               selectedComplaint={selectedComplaint}
               setSelectedComplaint={setSelectedComplaint}
               complaintReply={complaintReply}
@@ -257,6 +385,8 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
               setCStatusFilter={setCStatusFilter}
               cSearch={cSearch}
               setCSearch={setCSearch}
+              onStatusChange={handleComplaintStatusChange}
+              onSendReply={handleComplaintReply}
             />
           )}
 

@@ -2,6 +2,7 @@ import type { AdminComplaint, AdminComplaintThreadMessage } from './types'
 
 type ComplaintsPageProps = {
   adminComplaints: AdminComplaint[]
+  setAdminComplaints?: React.Dispatch<React.SetStateAction<AdminComplaint[]>>
   selectedComplaint: AdminComplaint | null
   setSelectedComplaint: React.Dispatch<React.SetStateAction<AdminComplaint | null>>
   complaintReply: string
@@ -12,9 +13,26 @@ type ComplaintsPageProps = {
   setCStatusFilter: React.Dispatch<React.SetStateAction<'all' | 'Submitted' | 'Under Review' | 'Responded' | 'Resolved' | 'Closed'>>
   cSearch: string
   setCSearch: React.Dispatch<React.SetStateAction<string>>
+  onStatusChange?: (complaintId: string, newStatus: AdminComplaint['status']) => void
+  onSendReply?: (complaintId: string, replyText: string) => void
 }
 
-export default function ComplaintsPage({ adminComplaints, selectedComplaint, setSelectedComplaint, complaintReply, setComplaintReply, complaintThreads, setComplaintThreads, cStatusFilter, setCStatusFilter, cSearch, setCSearch }: ComplaintsPageProps) {
+export default function ComplaintsPage({
+  adminComplaints,
+  setAdminComplaints,
+  selectedComplaint,
+  setSelectedComplaint,
+  complaintReply,
+  setComplaintReply,
+  complaintThreads,
+  setComplaintThreads,
+  cStatusFilter,
+  setCStatusFilter,
+  cSearch,
+  setCSearch,
+  onStatusChange,
+  onSendReply,
+}: ComplaintsPageProps) {
   return (
     <>
       <div className="flex items-end justify-between">
@@ -43,7 +61,12 @@ export default function ComplaintsPage({ adminComplaints, selectedComplaint, set
                 onChange={e => {
                   const newStatus = e.target.value as AdminComplaint['status']
                   setSelectedComplaint(c => c ? { ...c, status: newStatus } : c)
-                  setComplaintThreads(t => ({ ...t }))
+                  if (setAdminComplaints) {
+                    setAdminComplaints(prev => prev.map(c => c.id === selectedComplaint.id ? { ...c, status: newStatus } : c))
+                  }
+                  if (onStatusChange) {
+                    onStatusChange(selectedComplaint.id, newStatus)
+                  }
                 }}
                 className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#1a1a18] bg-white"
               >
@@ -77,8 +100,11 @@ export default function ComplaintsPage({ adminComplaints, selectedComplaint, set
                   onChange={e => setComplaintReply(e.target.value)}
                   onKeyDown={e => {
                     if (e.key === 'Enter' && complaintReply.trim()) {
-                      setComplaintThreads(t => ({ ...t, [selectedComplaint.id]: [...(t[selectedComplaint.id] ?? []), { from: 'Admin', text: complaintReply.trim(), date: '31 Jul 2026' }] }))
+                      const text = complaintReply.trim()
+                      const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+                      setComplaintThreads(t => ({ ...t, [selectedComplaint.id]: [...(t[selectedComplaint.id] ?? []), { from: 'Admin', text, date: today }] }))
                       setComplaintReply('')
+                      if (onSendReply) onSendReply(selectedComplaint.id, text)
                     }
                   }}
                   placeholder="Type a response…"
@@ -87,8 +113,11 @@ export default function ComplaintsPage({ adminComplaints, selectedComplaint, set
                 <button
                   onClick={() => {
                     if (!complaintReply.trim()) return
-                    setComplaintThreads(t => ({ ...t, [selectedComplaint.id]: [...(t[selectedComplaint.id] ?? []), { from: 'Admin', text: complaintReply.trim(), date: '31 Jul 2026' }] }))
+                    const text = complaintReply.trim()
+                    const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+                    setComplaintThreads(t => ({ ...t, [selectedComplaint.id]: [...(t[selectedComplaint.id] ?? []), { from: 'Admin', text, date: today }] }))
                     setComplaintReply('')
+                    if (onSendReply) onSendReply(selectedComplaint.id, text)
                   }}
                   className="bg-[#111827] text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-[#1f2937] transition-colors"
                 >Send</button>

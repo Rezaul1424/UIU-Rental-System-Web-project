@@ -5,6 +5,7 @@ import { securityRouter } from './security.js';
 import { listingsRouter } from './listings.js';
 import { studentRouter } from './student.js';
 import { landlordRouter } from './landlord.js';
+import { adminRouter } from './admin.js';
 
 /**
  * All v1 API routes are mounted here and registered under /api/v1 in
@@ -21,5 +22,6 @@ v1Router.use('/student', studentRouter);
 v1Router.use('/students', studentRouter);
 v1Router.use('/landlord', landlordRouter);
 v1Router.use('/landlords', landlordRouter);
+v1Router.use('/admin', adminRouter);
 
 export { v1Router };
