@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import type { LandlordComplaint } from './types'
 import type { LandlordProfile } from '../../lib/landlordApi'
+import { changePassword } from '../../lib/api'
 
 type SettingsPageProps = {
   userName: string
@@ -22,6 +23,45 @@ export default function SettingsPage({ userName, profile, onSaveProfile, myListi
   const companyRef = useRef<HTMLInputElement>(null)
   const [saving, setSaving] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
+
+  const [currentPw, setCurrentPw] = useState('')
+  const [newPw, setNewPw] = useState('')
+  const [confirmPw, setConfirmPw] = useState('')
+  const [pwLoading, setPwLoading] = useState(false)
+  const [pwError, setPwError] = useState('')
+  const [pwSuccess, setPwSuccess] = useState('')
+
+  const handlePasswordChange = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    setPwError('')
+    setPwSuccess('')
+
+    if (!currentPw) {
+      setPwError('Please enter your current password.')
+      return
+    }
+    if (!newPw || newPw.length < 8) {
+      setPwError('New password must be at least 8 characters long.')
+      return
+    }
+    if (newPw !== confirmPw) {
+      setPwError('New passwords do not match.')
+      return
+    }
+
+    setPwLoading(true)
+    try {
+      await changePassword(currentPw, newPw)
+      setPwSuccess('Password updated successfully!')
+      setCurrentPw('')
+      setNewPw('')
+      setConfirmPw('')
+    } catch (err) {
+      setPwError(err instanceof Error ? err.message : 'Failed to update password.')
+    } finally {
+      setPwLoading(false)
+    }
+  }
 
   const handleSave = async () => {
     if (!onSaveProfile) return
@@ -104,13 +144,60 @@ export default function SettingsPage({ userName, profile, onSaveProfile, myListi
 
           <div className="bg-white rounded-2xl shadow-sm p-6 space-y-4">
             <div className="font-semibold text-[#111827]">Change Password</div>
-            {['Current Password', 'New Password', 'Confirm New Password'].map(label => (
-              <div key={label}>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">{label}</label>
-                <input type="password" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#111827]" placeholder="••••••••" />
+
+            {pwError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-3.5 py-2.5 rounded-xl">
+                {pwError}
               </div>
-            ))}
-            <button className="border border-gray-200 text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-gray-50 transition-colors text-[#111827]">Update Password</button>
+            )}
+            {pwSuccess && (
+              <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs px-3.5 py-2.5 rounded-xl">
+                {pwSuccess}
+              </div>
+            )}
+
+            <form onSubmit={handlePasswordChange} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Current Password</label>
+                <input
+                  type="password"
+                  value={currentPw}
+                  onChange={e => setCurrentPw(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#111827]"
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">New Password</label>
+                <input
+                  type="password"
+                  value={newPw}
+                  onChange={e => setNewPw(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#111827]"
+                  placeholder="Minimum 8 characters"
+                  autoComplete="new-password"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Confirm New Password</label>
+                <input
+                  type="password"
+                  value={confirmPw}
+                  onChange={e => setConfirmPw(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#111827]"
+                  placeholder="Re-enter new password"
+                  autoComplete="new-password"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={pwLoading}
+                className="border border-gray-200 text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-gray-50 transition-colors text-[#111827] disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {pwLoading ? 'Updating…' : 'Update Password'}
+              </button>
+            </form>
           </div>
         </div>
 

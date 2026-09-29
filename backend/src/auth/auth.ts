@@ -406,6 +406,34 @@ export async function deactivateAccount(user: AuthUser, password: string) {
   };
 }
 
+export async function changePassword(user: AuthUser, currentPassword: string, newPassword: string): Promise<{ message: string }> {
+  if (await usePersistentAuth()) {
+    const currentUser = await findPersistentUserWithPassword(user.email);
+    if (!currentUser || !bcrypt.compareSync(currentPassword, currentUser.password_hash)) {
+      throw new AppError(401, 'INVALID_CREDENTIALS', 'Current password is incorrect');
+    }
+    try {
+      const newHash = bcrypt.hashSync(newPassword, 10);
+      await db.execute('UPDATE users SET password_hash = ? WHERE id = ?', [newHash, currentUser.id]);
+      return { message: 'Password changed successfully' };
+    } catch {
+      persistentAuth = false;
+    }
+  }
+
+  const currentUser = users.get(normalizeEmail(user.email));
+  if (!currentUser) {
+    throw new AppError(404, 'USER_NOT_FOUND', 'User not found');
+  }
+
+  if (!bcrypt.compareSync(currentPassword, currentUser.passwordHash)) {
+    throw new AppError(401, 'INVALID_CREDENTIALS', 'Current password is incorrect');
+  }
+
+  currentUser.passwordHash = bcrypt.hashSync(newPassword, 10);
+  return { message: 'Password changed successfully' };
+}
+
 export async function suspendUserByEmail(email: string) {
   if (await usePersistentAuth()) {
     const user = await findPersistentUser(email);

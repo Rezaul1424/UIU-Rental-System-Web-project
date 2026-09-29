@@ -92,3 +92,11 @@ export const clearAuthSession = () => {
   localStorage.removeItem('uiu_auth_token');
   localStorage.removeItem('uiu_user');
 };
+
+export const changePassword = async (currentPassword: string, newPassword: string) => {
+  return api.post<{ message: string }>('/api/v1/auth/change-password', {
+    currentPassword,
+    newPassword,
+  });
+};
+
