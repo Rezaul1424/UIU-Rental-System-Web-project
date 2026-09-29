@@ -76,7 +76,10 @@ export type StudentApplication = {
 export type StudentLeaseSummary = {
   id?: string;
   propertyId: string;
+  propertyTitle?: string;
+  propertyCode?: string;
   landlordId?: string;
+  landlordName?: string;
   status: 'pending' | 'active' | 'ended' | 'terminated';
   startDate?: string;
   endDate?: string;
@@ -140,7 +143,10 @@ export const getLeases = async (): Promise<StudentLeaseSummary[]> => {
   return leases.map((lease) => ({
     id: lease.id,
     propertyId: String(lease.propertyId ?? lease.property_id ?? lease.listingId ?? ''),
+    propertyTitle: lease.propertyTitle ?? lease.property_title,
+    propertyCode: lease.propertyCode ?? lease.property_code,
     landlordId: lease.landlordId ?? lease.landlord_id,
+    landlordName: lease.landlordName ?? lease.landlord_name,
     status: ['pending', 'active', 'ended', 'terminated'].includes(String(lease.status)) ? lease.status : 'active',
     startDate: lease.startDate ?? lease.start_date,
     endDate: lease.endDate ?? lease.end_date,

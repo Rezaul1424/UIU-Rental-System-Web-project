@@ -203,7 +203,7 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
   // ── Lease and rent data ─────────────────────────────────────────────────────
   const [rentSummary, setRentSummary] = useState<Array<{ id: string; leaseId: string; month: string; amount: number; dueDate: string; status: string; paid: boolean }>>([])
   const [receipts, setReceipts] = useState<Array<{ month: string; amount: number; paid: boolean }>>([])
-  const [leases, setLeases] = useState<Array<{ id: string; propertyId: string; landlordId?: string; status: string; startDate?: string; endDate?: string; monthlyRent?: number }>>([])
+  const [leases, setLeases] = useState<Array<{ id?: string; propertyId: string; propertyTitle?: string; propertyCode?: string; landlordId?: string; landlordName?: string; status: string; startDate?: string; endDate?: string; monthlyRent?: number }>>([])
 
   // ── Maintenance ─────────────────────────────────────────────────────────────
   const [myRequests, setMyRequests] = useState<Array<{ id: number; issue: string; status: string; date: string }>>([])
@@ -245,7 +245,17 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
   // ── Pay rent ─────────────────────────────────────────────────────────────────
   const [payStep, setPayStep] = useState<'form' | 'success'>('form')
   const [payForm, setPayForm] = useState({ card: '', expiry: '', cvv: '', name: '' })
-  const submitPayment = () => setPayStep('success')
+  const submitPayment = () => {
+    setPayStep('success')
+    const activeLease = leases.find(l => l.status === 'active') ?? leases[0]
+    const rentAmount = activeLease?.monthlyRent ?? 4200
+    const currentMonth = new Date().toLocaleString('default', { month: 'short', year: 'numeric' })
+    setReceipts(prev => {
+      if (prev.some(r => r.month === currentMonth)) return prev
+      return [{ month: currentMonth, amount: rentAmount, paid: true }, ...prev]
+    })
+    setRentSummary(prev => prev.map(r => ({ ...r, paid: true, status: 'paid' })))
+  }
 
   // ── Reviews ──────────────────────────────────────────────────────────────────
   // Landlords the student can review: current + any previously applied
@@ -568,10 +578,12 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
               submitPayment={submitPayment}
               setPage={setPage}
               setPayStep={setPayStep}
+              leases={leases}
+              rentSummary={rentSummary}
             />
           )}
 
-          {page === 'receipts' && <ReceiptsPage receipts={receipts} userName={userName} setPage={setPage} />}
+          {page === 'receipts' && <ReceiptsPage receipts={receipts} leases={leases} userName={userName} setPage={setPage} />}
 
           {page === 'maintenance' && (
             <MaintenancePage

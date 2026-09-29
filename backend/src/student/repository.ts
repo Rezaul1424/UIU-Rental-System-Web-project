@@ -11,7 +11,7 @@ import type {
   StudentReceiptSummary,
   StudentRentSummary,
 } from '../contracts/student.js';
-import { findTestListing } from '../landlord/repository.js';
+import { findTestListing, testApplications } from '../landlord/repository.js';
 
 const db = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
@@ -134,7 +134,6 @@ function useFixtures(): boolean {
 }
 
 const testFavorites = new Map<string, FavoriteListing[]>();
-const testApplications = new Map<string, Array<StudentApplicationPayload & { id: string; status: 'under-review' | 'accepted' | 'rejected' | 'cancelled'; createdAt: string }>>();
 const testMaintenanceRequests = new Map<string, StudentMaintenanceRequest[]>();
 
 async function resolvePropertyId(identifier: string): Promise<number> {
@@ -302,10 +301,12 @@ export const studentRepository: StudentRepository = {
       if (list.some((application) => application.propertyId === payload.propertyId && application.status !== 'cancelled')) {
         throw new AppError(409, 'DUPLICATE_APPLICATION', 'You already submitted an application for this property');
       }
+      const testListing = findTestListing(payload.propertyId);
+      const landlordId = testListing?.landlordId || payload.landlordId || '2';
       const application = {
         id: `${studentId}-${payload.propertyId}`,
-        propertyId: payload.propertyId,
-        landlordId: '2',
+        propertyId: testListing?.id || payload.propertyId,
+        landlordId,
         studentCardNo: payload.studentCardNo,
         contactPhone: payload.contactPhone,
         moveInDate: payload.moveInDate,
@@ -384,8 +385,11 @@ export const studentRepository: StudentRepository = {
     return rows.map((row) => ({
       id: String(row.id),
       propertyId: String(row.property_id),
+      propertyTitle: row.property_title ?? undefined,
+      propertyCode: row.property_code ?? undefined,
       studentId: String(row.student_id),
       landlordId: String(row.landlord_id),
+      landlordName: row.landlord_name ?? undefined,
       status: row.status,
       startDate: row.start_date.toISOString().slice(0, 10),
       endDate: row.end_date ? row.end_date.toISOString().slice(0, 10) : undefined,

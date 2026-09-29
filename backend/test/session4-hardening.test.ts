@@ -147,4 +147,85 @@ describe('Session 4 hardening', () => {
     expect(Array.isArray(list.body.data)).toBe(true);
     expect(list.body.data.some((item: { title: string }) => item.title === 'Updated prime listing')).toBe(true);
   });
+
+  it('allows a landlord to review an application and generate an active lease upon acceptance', async () => {
+    await request(app).post('/api/v1/auth/register').send({
+      name: 'Review Landlord',
+      email: 'review.landlord@uiu.ac.bd',
+      password: 'StrongPass123!',
+      studentId: 'LAND-300',
+      role: 'landlord',
+    });
+
+    const landlordLogin = await request(app).post('/api/v1/auth/login').send({
+      email: 'review.landlord@uiu.ac.bd',
+      password: 'StrongPass123!',
+    });
+
+    const listing = await request(app)
+      .post('/api/v1/landlord/listings')
+      .set('Authorization', `Bearer ${landlordLogin.body.token}`)
+      .send({
+        title: 'Reviewable Apartment',
+        description: 'Listing for lease workflow test.',
+        type: 'apartment',
+        priceBDT: 6500,
+        bedrooms: 2,
+        roommateCapacity: 2,
+        parkingAvailable: true,
+        facilities: ['WiFi'],
+        address: {
+          line1: 'Badda Link Road',
+          area: 'Badda',
+          city: 'Dhaka',
+          district: 'Dhaka',
+          latitude: 23.79,
+          longitude: 90.42,
+        },
+        status: 'approved',
+      });
+    expect(listing.status).toBe(201);
+
+    await request(app).post('/api/v1/auth/register').send({
+      name: 'Applicant Student',
+      email: 'applicant.student@uiu.ac.bd',
+      password: 'StrongPass123!',
+      studentId: '01124000099',
+      role: 'student',
+    });
+
+    const studentLogin = await request(app).post('/api/v1/auth/login').send({
+      email: 'applicant.student@uiu.ac.bd',
+      password: 'StrongPass123!',
+    });
+
+    const application = await request(app)
+      .post('/api/v1/student/applications')
+      .set('Authorization', `Bearer ${studentLogin.body.token}`)
+      .send({
+        propertyId: listing.body.data.id,
+        moveInDate: '2026-10-01',
+        message: 'Looking forward to moving in!',
+        studentCardNo: '01124000099',
+        contactPhone: '01700000000',
+        employment: 'Student',
+      });
+    expect(application.status).toBe(201);
+
+    const review = await request(app)
+      .patch(`/api/v1/landlord/applications/${application.body.data.id}/status`)
+      .set('Authorization', `Bearer ${landlordLogin.body.token}`)
+      .send({
+        status: 'accepted',
+      });
+    expect(review.status).toBe(200);
+    expect(review.body.data.status).toBe('accepted');
+
+    const leases = await request(app)
+      .get('/api/v1/landlord/leases')
+      .set('Authorization', `Bearer ${landlordLogin.body.token}`);
+    expect(leases.status).toBe(200);
+    expect(Array.isArray(leases.body.data)).toBe(true);
+    expect(leases.body.data.some((l: { propertyId: string; status: string }) => l.propertyId === listing.body.data.id && l.status === 'active')).toBe(true);
+  });
 });

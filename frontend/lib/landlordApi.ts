@@ -66,7 +66,13 @@ export const updateListing = (listingId: string | number, payload: Record<string
 export type LandlordApplication = {
   id: string;
   propertyId: string;
+  propertyTitle?: string;
+  propertyCode?: string;
   studentId: string;
+  studentName?: string;
+  studentCardNo?: string;
+  contactPhone?: string;
+  department?: string;
   landlordId: string;
   status: 'under-review' | 'accepted' | 'rejected' | 'cancelled';
   createdAt: string;
@@ -78,7 +84,10 @@ export type LandlordApplication = {
 export type LandlordLeaseSummary = {
   id: string;
   propertyId: string;
+  propertyTitle?: string;
+  propertyCode?: string;
   studentId: string;
+  studentName?: string;
   landlordId: string;
   status: 'pending' | 'active' | 'ended' | 'terminated';
   startDate?: string;

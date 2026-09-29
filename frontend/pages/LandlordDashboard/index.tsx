@@ -25,7 +25,7 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
   const [dashboardError, setDashboardError] = useState('')
   const [landlordProfile, setLandlordProfile] = useState<{ name?: string; email?: string; propertyCount?: number } | null>(null)
   const [myListings, setMyListings] = useState<Listing[]>([])
-  const [leases, setLeases] = useState<Array<{ id?: string; propertyId: string; studentId?: string; status?: string; monthlyRent?: number }>>([])
+  const [leases, setLeases] = useState<Array<{ id?: string; propertyId: string; propertyTitle?: string; propertyCode?: string; studentId?: string; studentName?: string; status?: string; monthlyRent?: number; startDate?: string; endDate?: string }>>([])
   const [requests, setRequests] = useState<RequestItem[]>([])
   const [mReqs, setMReqs] = useState<MaintReq[]>([])
   const openLandlordListing = (l: Listing) => { setLandlordView(l); setPage('listing-detail') }
@@ -79,14 +79,14 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
         if (Array.isArray(applicationsResult)) {
           setRequests(applicationsResult.map((application) => ({
             id: Number(application.id ?? Date.now()),
-            student: `Student ${application.studentId}`,
-            studentId: String(application.studentId ?? 'N/A'),
-            dept: 'UIU Student',
-            phone: 'N/A',
-            moveIn: 'Flexible',
-            employment: 'Student',
+            student: application.studentName || `Student ${application.studentId}`,
+            studentId: application.studentCardNo || String(application.studentId ?? 'N/A'),
+            dept: application.department || 'UIU Student',
+            phone: application.contactPhone || 'N/A',
+            moveIn: application.moveInDate ? new Date(application.moveInDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Flexible',
+            employment: application.employment || 'Student',
             message: application.message ?? 'New application submitted.',
-            listing: `Property ${application.propertyId}`,
+            listing: application.propertyTitle || (application.propertyCode ? `Property ${application.propertyCode}` : `Property ${application.propertyId}`),
             date: application.createdAt ? formatDisplayDate(application.createdAt) : 'N/A',
             status: ['accepted', 'rejected', 'cancelled'].includes(application.status) ? (application.status === 'accepted' ? 'approved' : 'rejected') : 'pending',
           })))
@@ -372,16 +372,22 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
   const monthlyRevenue = leases.reduce((sum, lease) => sum + Number(lease.monthlyRent ?? 0), 0)
   const liveLeaseTransactions = leases.map((lease) => ({
     id: Number(lease.id ?? lease.propertyId ?? Date.now()),
-    tenant: lease.studentId ? `Student ${lease.studentId}` : 'Tenant',
-    listing: lease.propertyId ? `Property ${lease.propertyId}` : 'Lease',
+    tenant: lease.studentName || (lease.studentId ? `Student ${lease.studentId}` : 'Tenant'),
+    listing: lease.propertyTitle || (lease.propertyCode ? `${lease.propertyCode}` : (lease.propertyId ? `Property ${lease.propertyId}` : 'Lease')),
     amount: Number(lease.monthlyRent ?? 0),
-    month: 'Current cycle',
+    month: lease.startDate ? new Date(lease.startDate).toLocaleString('default', { month: 'short', year: 'numeric' }) : 'Current cycle',
     paid: lease.status === 'active',
   }))
   const approveRequest = async (id: number) => {
     try {
       await reviewApplication(id, { status: 'accepted' })
       setRequests(rs => rs.map(r => r.id === id ? { ...r, status: 'approved' } : r))
+      const [refreshedLeases, refreshedListings] = await Promise.all([
+        getLeases().catch(() => []),
+        getMyListings().catch(() => []),
+      ])
+      if (Array.isArray(refreshedLeases)) setLeases(refreshedLeases)
+      if (Array.isArray(refreshedListings)) setMyListings(refreshedListings)
       setDashboardError('')
     } catch (error) {
       setDashboardError(error instanceof Error ? error.message : 'Unable to approve this application.')

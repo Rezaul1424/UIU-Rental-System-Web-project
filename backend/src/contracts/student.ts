@@ -39,8 +39,11 @@ export const StudentApplicationPayloadSchema = z.object({
 export const StudentLeaseSummarySchema = z.object({
   id: z.string().min(1),
   propertyId: z.string().min(1),
+  propertyTitle: z.string().optional(),
+  propertyCode: z.string().optional(),
   studentId: z.string().min(1),
   landlordId: z.string().min(1),
+  landlordName: z.string().optional(),
   status: z.enum(['pending', 'active', 'ended', 'terminated']),
   startDate: z.string().trim().min(1),
   endDate: z.string().trim().min(1).optional(),

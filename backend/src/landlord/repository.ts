@@ -51,6 +51,15 @@ type DbApplicationRow = RowDataPacket & {
   landlord_id: number;
   status: 'under-review' | 'accepted' | 'rejected' | 'cancelled';
   created_at: Date;
+  student_name?: string | null;
+  student_card_no?: string | null;
+  contact_phone?: string | null;
+  move_in_date?: Date | string | null;
+  employment?: string | null;
+  message?: string | null;
+  property_code?: string | null;
+  property_title?: string | null;
+  department?: string | null;
 };
 
 type DbLeaseRow = RowDataPacket & {
@@ -64,6 +73,9 @@ type DbLeaseRow = RowDataPacket & {
   monthly_rent: number | string;
   created_at: Date;
   updated_at: Date;
+  student_name?: string | null;
+  property_title?: string | null;
+  property_code?: string | null;
 };
 
 type DbMaintenanceRow = RowDataPacket & {
@@ -113,7 +125,7 @@ type TestLeaseRecord = LandlordLeaseSummary & {
 };
 
 const testListings = new Map<string, TestListingRecord[]>();
-const testApplications = new Map<string, TestApplicationRecord[]>();
+export const testApplications = new Map<string, TestApplicationRecord[]>();
 const testMaintenanceRequests = new Map<string, TestMaintenanceRecord[]>();
 const testLeases = new Map<string, TestLeaseRecord[]>();
 
@@ -469,16 +481,28 @@ export const landlordRepository: LandlordRepository = {
     const landlordNumericId = Number(landlordId);
     if (!Number.isFinite(landlordNumericId) || landlordNumericId <= 0) return [];
 
-    const [rows] = await db.query<DbApplicationRow[]>(`SELECT a.id, a.property_id, a.student_id, a.landlord_id, a.status, a.created_at
+    const [rows] = await db.query<DbApplicationRow[]>(`SELECT a.id, a.property_id, a.student_id, a.landlord_id, a.status, a.created_at,
+        a.student_card_no, a.contact_phone, a.move_in_date, a.employment, a.message,
+        u.name AS student_name, u.department, p.property_code, p.title AS property_title
       FROM applications a
       JOIN properties p ON p.id = a.property_id
+      JOIN users u ON u.id = a.student_id
       WHERE p.landlord_id = ?
       ORDER BY a.created_at DESC`, [landlordNumericId]);
 
     return rows.map((row) => ({
       id: String(row.id),
       propertyId: String(row.property_id),
+      propertyCode: row.property_code ?? undefined,
+      propertyTitle: row.property_title ?? undefined,
       studentId: String(row.student_id),
+      studentName: row.student_name ?? undefined,
+      studentCardNo: row.student_card_no ?? undefined,
+      contactPhone: row.contact_phone ?? undefined,
+      department: row.department ?? undefined,
+      moveInDate: row.move_in_date ? (row.move_in_date instanceof Date ? row.move_in_date.toISOString().slice(0, 10) : String(row.move_in_date)) : undefined,
+      employment: row.employment ?? undefined,
+      message: row.message ?? undefined,
       landlordId: String(row.landlord_id),
       status: row.status,
       createdAt: row.created_at.toISOString(),
@@ -494,6 +518,23 @@ export const landlordRepository: LandlordRepository = {
           const current = list[index];
           const status = payload.status === 'under-review' || payload.status === 'accepted' || payload.status === 'rejected' || payload.status === 'cancelled' ? payload.status : current.status;
           list[index] = { ...current, status };
+          if (status === 'accepted') {
+            const leasesList = testLeases.get(landlordId) ?? [];
+            if (!leasesList.some((l) => l.propertyId === current.propertyId && l.studentId === current.studentId)) {
+              leasesList.push({
+                id: `lease-${Date.now()}`,
+                propertyId: current.propertyId,
+                studentId: current.studentId,
+                landlordId,
+                status: 'active',
+                startDate: new Date().toISOString().slice(0, 10),
+                monthlyRent: 5000,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              });
+              testLeases.set(landlordId, leasesList);
+            }
+          }
           return { id: current.id, status, reviewedAt: new Date().toISOString() };
         }
       }
@@ -502,18 +543,47 @@ export const landlordRepository: LandlordRepository = {
 
     const landlordNumericId = Number(landlordId);
     const applicationNumericId = Number(applicationId);
-    if (!Number.isFinite(landlordNumericId) || landlordNumericId <= 0 || !Number.isFinite(applicationNumericId)) {
+    if (!Number.isFinite(landlordNumericId) || landlordNumericId <= 0) {
+      throw new AppError(400, 'INVALID_LANDLORD_ID', 'Landlord identifier is invalid');
+    }
+    if (!Number.isFinite(applicationNumericId)) {
       throw new AppError(400, 'INVALID_APPLICATION', 'Application identifier is invalid');
     }
 
-    const [existing] = await db.query<RowDataPacket[]>(`SELECT a.id, a.status, p.landlord_id
+    const [existing] = await db.query<RowDataPacket[]>(`SELECT a.id, a.status, a.property_id, a.student_id, a.landlord_id, a.move_in_date, p.price
       FROM applications a
       JOIN properties p ON p.id = a.property_id
       WHERE a.id = ? AND p.landlord_id = ? LIMIT 1`, [applicationNumericId, landlordNumericId]);
     if (!existing[0]) throw new AppError(403, 'FORBIDDEN', 'You do not own this application');
 
-    const status = payload.status === 'accepted' || payload.status === 'rejected' || payload.status === 'cancelled' || payload.status === 'under-review' ? payload.status : existing[0].status;
+    const app = existing[0];
+    const status = payload.status === 'accepted' || payload.status === 'rejected' || payload.status === 'cancelled' || payload.status === 'under-review' ? payload.status : app.status;
     await db.execute('UPDATE applications SET status = ?, updated_at = NOW() WHERE id = ?', [status, applicationNumericId]);
+
+    if (status === 'accepted') {
+      const [existingLeases] = await db.query<RowDataPacket[]>(
+        'SELECT id FROM leases WHERE property_id = ? AND student_id = ? AND status = "active" LIMIT 1',
+        [app.property_id, app.student_id]
+      );
+      if (!existingLeases[0]) {
+        const startDate = app.move_in_date ? new Date(app.move_in_date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+        const rentAmount = Number(app.price ?? 5000);
+        const [leaseResult] = await db.execute(
+          'INSERT INTO leases (property_id, student_id, landlord_id, status, start_date, end_date, monthly_rent, created_at, updated_at) VALUES (?, ?, ?, "active", ?, DATE_ADD(?, INTERVAL 6 MONTH), ?, NOW(), NOW())',
+          [app.property_id, app.student_id, app.landlord_id, startDate, startDate, rentAmount]
+        );
+        const leaseId = (leaseResult as { insertId?: number }).insertId;
+        if (leaseId) {
+          const currentMonthYear = new Date().toISOString().slice(0, 7);
+          await db.execute(
+            'INSERT INTO rent_obligations (lease_id, month_year, amount, due_date, status, created_at, updated_at) VALUES (?, ?, ?, DATE_ADD(CURDATE(), INTERVAL 7 DAY), "pending", NOW(), NOW()) ON DUPLICATE KEY UPDATE amount = VALUES(amount)',
+            [leaseId, currentMonthYear, rentAmount]
+          );
+        }
+      }
+      await db.execute('UPDATE properties SET status = "occupied", updated_at = NOW() WHERE id = ?', [app.property_id]);
+    }
+
     return { id: String(applicationNumericId), status, reviewedAt: new Date().toISOString() };
   },
 
@@ -536,15 +606,20 @@ export const landlordRepository: LandlordRepository = {
     const landlordNumericId = Number(landlordId);
     if (!Number.isFinite(landlordNumericId) || landlordNumericId <= 0) return [];
 
-    const [rows] = await db.query<DbLeaseRow[]>(`SELECT l.*
+    const [rows] = await db.query<DbLeaseRow[]>(`SELECT l.*, u.name AS student_name, p.title AS property_title, p.property_code
       FROM leases l
+      JOIN users u ON u.id = l.student_id
+      JOIN properties p ON p.id = l.property_id
       WHERE l.landlord_id = ?
       ORDER BY l.updated_at DESC`, [landlordNumericId]);
 
     return rows.map((row) => ({
       id: String(row.id),
       propertyId: String(row.property_id),
+      propertyTitle: row.property_title ?? undefined,
+      propertyCode: row.property_code ?? undefined,
       studentId: String(row.student_id),
+      studentName: row.student_name ?? undefined,
       landlordId: String(row.landlord_id),
       status: row.status,
       startDate: row.start_date.toISOString().slice(0, 10),
