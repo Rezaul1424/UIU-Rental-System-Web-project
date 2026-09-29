@@ -463,8 +463,8 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
     const activeLeaseTenants = leases
       .filter((lease) => lease.status === 'active')
       .map((lease) => ({
-        name: lease.studentId ? `Student ${lease.studentId}` : 'Active Tenant',
-        listing: lease.propertyId ? `Property ${lease.propertyId}` : 'Current listing',
+        name: lease.studentName || (lease.studentId ? `Student ${lease.studentId}` : 'Active Tenant'),
+        listing: lease.propertyTitle || lease.propertyCode || (lease.propertyId ? `Property ${lease.propertyId}` : 'Current listing'),
         category: 'current' as const,
       }))
 
@@ -480,7 +480,7 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
     const applicantContacts = requests
       .filter((request) => request.status === 'pending')
       .map((request) => ({
-        name: request.studentId ? `Student ${request.studentId}` : request.student,
+        name: request.student || (request.studentId ? `Student ${request.studentId}` : 'Applicant'),
         listing: request.listing || 'Pending property',
         category: 'potential' as const,
       }))

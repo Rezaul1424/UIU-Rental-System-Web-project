@@ -14,7 +14,7 @@ export default function OverviewPage({ userName, applications, myRequests, onNav
   return (
     <>
       <div>
-        <p className="text-xs text-gray-400 font-medium mb-0.5">Hi, {userName.split(' ')[0]} 👋</p>
+        <p className="text-xs text-gray-400 font-medium mb-0.5">Hi, {(userName || 'Student').split(' ')[0]} 👋</p>
         <h1 className="text-2xl font-bold text-[#111827]">Student Dashboard</h1>
         <p className="text-sm text-gray-400 mt-0.5">Your housing at a glance</p>
       </div>

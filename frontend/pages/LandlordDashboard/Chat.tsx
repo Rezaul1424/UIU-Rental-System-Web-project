@@ -88,13 +88,13 @@ export default function ChatPage({ currentTenants, potentialTenants, activeChatN
             <div className="flex flex-col items-center justify-center h-full text-center text-gray-400 pb-16">
               <div className="text-5xl mb-3">💬</div>
               <div className="text-base font-medium text-gray-500 mb-1">No messages yet</div>
-              <div className="text-sm">Say hello to {activeChatName.split(' ')[0]} to get the conversation started.</div>
+              <div className="text-sm">Say hello to {(activeChatName || 'Tenant').split(' ')[0]} to get the conversation started.</div>
             </div>
           ) : (
             activeMsgs.map((msg, index) => (
               <div key={index} className={`flex items-end gap-2 ${msg.from === 'landlord' ? 'justify-end' : 'justify-start'}`}>
                 {msg.from !== 'landlord' && (
-                  <div className="w-7 h-7 rounded-full bg-gray-300 flex items-center justify-center text-xs font-bold text-gray-600 flex-shrink-0 mb-0.5">{activeChatName[0]}</div>
+                  <div className="w-7 h-7 rounded-full bg-gray-300 flex items-center justify-center text-xs font-bold text-gray-600 flex-shrink-0 mb-0.5">{(activeChatName || 'T')[0]}</div>
                 )}
                 <div className={`text-sm px-4 py-2.5 rounded-2xl max-w-[65%] ${msg.from === 'landlord' ? 'bg-[#111827] text-white rounded-br-sm' : 'bg-white text-[#111827] border border-gray-200 shadow-sm rounded-bl-sm'}`}>
                   {msg.text}
@@ -111,7 +111,7 @@ export default function ChatPage({ currentTenants, potentialTenants, activeChatN
               onChange={e => setChatInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && sendChat()}
               className="flex-1 border border-gray-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-[#111827] bg-gray-50 focus:bg-white transition-colors"
-              placeholder={`Message ${activeChatName.split(' ')[0]}…`}
+              placeholder={`Message ${(activeChatName || 'Tenant').split(' ')[0]}…`}
             />
             <button onClick={sendChat} className="bg-[#111827] text-white text-sm font-semibold px-5 py-3 rounded-2xl hover:bg-[#1f2937] transition-colors flex-shrink-0">Send</button>
           </div>
