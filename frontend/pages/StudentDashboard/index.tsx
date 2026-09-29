@@ -3,7 +3,7 @@ import type { Listing } from '../../types'
 import { listings } from '../../data'
 import { Badge } from '../../components/ui'
 import NotificationBell from '../../components/NotificationBell'
-import { addFavorite, cancelApplication as cancelStudentApplication, fetchPublicListings, getApplications, getFavorites, getLeases, getMaintenanceRequests, getProfile, getReceipts, getRentSummary, removeFavorite, submitApplication as submitStudentApplication, submitMaintenanceRequest, updateProfile as updateStudentProfile, type StudentApplication } from '../../lib/studentApi'
+import { addFavorite, cancelApplication as cancelStudentApplication, fetchPublicListings, getApplications, getFavorites, getLeases, getMaintenanceRequests, getProfile, getReceipts, getRentSummary, payRent, removeFavorite, submitApplication as submitStudentApplication, submitMaintenanceRequest, updateProfile as updateStudentProfile, type StudentApplication } from '../../lib/studentApi'
 import { studentNotifs } from './constants'
 import StudentSidebarNav from './Sidebar'
 import OverviewPage from './pages/OverviewPage'
@@ -314,16 +314,32 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
   // ── Pay rent ─────────────────────────────────────────────────────────────────
   const [payStep, setPayStep] = useState<'form' | 'success'>('form')
   const [payForm, setPayForm] = useState({ card: '', expiry: '', cvv: '', name: '' })
-  const submitPayment = () => {
+  const submitPayment = async () => {
     setPayStep('success')
     const activeLease = leases.find(l => l.status === 'active') ?? leases[0]
-    const rentAmount = activeLease?.monthlyRent ?? 4200
-    const currentMonth = new Date().toLocaleString('default', { month: 'short', year: 'numeric' })
+    const pendingRent = rentSummary.find(r => !r.paid && r.status !== 'paid') ?? rentSummary[0]
+    const rentAmount = pendingRent?.amount ?? activeLease?.monthlyRent ?? 4200
+    const currentMonth = pendingRent?.month ?? new Date().toLocaleString('default', { month: 'short', year: 'numeric' })
+
     setReceipts(prev => {
       if (prev.some(r => r.month === currentMonth)) return prev
       return [{ month: currentMonth, amount: rentAmount, paid: true }, ...prev]
     })
-    setRentSummary(prev => prev.map(r => ({ ...r, paid: true, status: 'paid' })))
+    setRentSummary(prev => prev.map(r => (!pendingRent || r.id === pendingRent.id) ? { ...r, paid: true, status: 'paid' } : r))
+
+    if (pendingRent?.id) {
+      try {
+        await payRent(pendingRent.id, { method: payMethod })
+        const [refreshedRent, refreshedReceipts] = await Promise.all([
+          getRentSummary().catch(() => null),
+          getReceipts().catch(() => null),
+        ])
+        if (refreshedRent) setRentSummary(refreshedRent)
+        if (refreshedReceipts) setReceipts(refreshedReceipts)
+      } catch (err) {
+        console.error('Failed to submit rent payment to backend:', err)
+      }
+    }
   }
 
   // ── Reviews ──────────────────────────────────────────────────────────────────
@@ -568,6 +584,8 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
               onNavigate={setPage}
               openChatWith={openChatWith}
               setShowNewReq={setShowNewReq}
+              leases={leases}
+              rentSummary={rentSummary}
             />
           )}
 

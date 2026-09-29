@@ -165,6 +165,16 @@ router.get('/receipts', asyncHandler(async (req, res) => {
   res.json({ data: receipts });
 }));
 
+router.post('/rent/:obligationId/pay', asyncHandler(async (req, res) => {
+  const currentUser = req.user;
+  if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+
+  const obligationId = z.string().trim().min(1).parse(req.params.obligationId);
+  const method = typeof req.body?.method === 'string' ? req.body.method : undefined;
+  const result = await studentService.payRentObligation(currentUser.id, obligationId, method);
+  res.status(200).json({ data: result });
+}));
+
 router.get('/maintenance', asyncHandler(async (req, res) => {
   const currentUser = req.user;
   if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');

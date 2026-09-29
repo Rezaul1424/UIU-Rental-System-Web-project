@@ -36,6 +36,7 @@ export interface StudentRepository {
   getMaintenanceRequests(studentId: string): Promise<StudentMaintenanceRequest[]>;
   submitMaintenanceRequest(studentId: string, payload: Omit<StudentMaintenanceRequest, 'id' | 'status' | 'createdAt' | 'updatedAt'>): Promise<StudentMaintenanceRequest>;
   updateProfile(userId: string, payload: { name?: string; phone?: string; studentId?: string }): Promise<StudentProfile | null>;
+  payRentObligation(studentId: string, obligationId: string, method?: string): Promise<{ receiptNumber: string; paidAt: string }>;
 }
 
 type StudentUserRow = RowDataPacket & {
@@ -505,6 +506,47 @@ export const studentRepository: StudentRepository = {
       amount: Number(row.amount),
       issuedAt: row.issued_at.toISOString(),
     }));
+  },
+
+  async payRentObligation(studentId: string, obligationId: string, _method?: string): Promise<{ receiptNumber: string; paidAt: string }> {
+    const userId = Number(studentId);
+    const oblId = Number(obligationId);
+    if (!Number.isFinite(userId) || !Number.isFinite(oblId)) {
+      throw new AppError(400, 'INVALID_PAYMENT', 'Invalid obligation or student ID');
+    }
+
+    if (useFixtures()) {
+      const receiptNumber = `REC-${Date.now()}`;
+      const paidAt = new Date().toISOString();
+      return { receiptNumber, paidAt };
+    }
+
+    // Verify obligation belongs to this student and is payable
+    const [oblRows] = await db.query<RowDataPacket[]>(
+      `SELECT ro.id, ro.status FROM rent_obligations ro
+       JOIN leases l ON l.id = ro.lease_id
+       WHERE ro.id = ? AND l.student_id = ? LIMIT 1`,
+      [oblId, userId],
+    );
+    const obl = oblRows[0];
+    if (!obl) throw new AppError(404, 'OBLIGATION_NOT_FOUND', 'Rent obligation not found');
+    if (obl.status === 'paid') throw new AppError(409, 'ALREADY_PAID', 'This obligation has already been paid');
+    if (!['pending', 'processing'].includes(obl.status)) {
+      throw new AppError(400, 'INVALID_STATUS', 'Obligation cannot be paid in its current state');
+    }
+
+    // Mark obligation as paid
+    await db.execute(`UPDATE rent_obligations SET status = 'paid' WHERE id = ?`, [oblId]);
+
+    // Insert payment receipt (ignore if duplicate race)
+    const receiptNumber = `REC-${Date.now()}`;
+    const paidAt = new Date().toISOString();
+    await db.execute(
+      `INSERT IGNORE INTO payment_receipts (rent_obligation_id, receipt_number, issued_at) VALUES (?, ?, ?)`,
+      [oblId, receiptNumber, new Date(paidAt)],
+    );
+
+    return { receiptNumber, paidAt };
   },
 
   async getMaintenanceRequests(studentId: string): Promise<StudentMaintenanceRequest[]> {

@@ -50,4 +50,7 @@ export const studentService = {
   async submitMaintenanceRequest(studentId: string, payload: Omit<StudentMaintenanceRequest, 'id' | 'status' | 'createdAt' | 'updatedAt'>): Promise<StudentMaintenanceRequest> {
     return studentRepository.submitMaintenanceRequest(studentId, payload);
   },
+  async payRentObligation(studentId: string, obligationId: string, method?: string): Promise<{ receiptNumber: string; paidAt: string }> {
+    return studentRepository.payRentObligation(studentId, obligationId, method);
+  },
 };

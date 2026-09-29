@@ -329,3 +329,8 @@ export const fetchPublicListings = async (query?: {
 export const cancelApplication = async (applicationId: string | number) => {
   return api.patch(`/api/v1/student/applications/${applicationId}/cancel`, {});
 };
+
+export const payRent = async (obligationId: string, paymentInfo?: { method?: string }) => {
+  return api.post<{ receiptNumber: string; paidAt: string }>(`/api/v1/student/rent/${obligationId}/pay`, paymentInfo ?? {});
+};
+
