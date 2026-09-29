@@ -13,6 +13,9 @@ import type {
 } from '../contracts/student.js';
 import { findTestListing, testApplications } from '../landlord/repository.js';
 
+export const testStudentReviews = new Map<string, any[]>();
+export const testStudentComplaints = new Map<string, any[]>();
+
 const db = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'root',
@@ -37,6 +40,10 @@ export interface StudentRepository {
   submitMaintenanceRequest(studentId: string, payload: Omit<StudentMaintenanceRequest, 'id' | 'status' | 'createdAt' | 'updatedAt'>): Promise<StudentMaintenanceRequest>;
   updateProfile(userId: string, payload: { name?: string; phone?: string; studentId?: string }): Promise<StudentProfile | null>;
   payRentObligation(studentId: string, obligationId: string, method?: string): Promise<{ receiptNumber: string; paidAt: string }>;
+  getReviews(studentId: string): Promise<any[]>;
+  submitReview(studentId: string, payload: { propertyId: string; landlordId?: string; landlordStars: number; propertyStars: number; comment?: string }): Promise<any>;
+  getComplaints(studentId: string): Promise<any[]>;
+  submitComplaint(studentId: string, payload: { against?: string; property?: string; propertyId?: string; category: string; subject: string; description: string }): Promise<any>;
 }
 
 type StudentUserRow = RowDataPacket & {
@@ -635,6 +642,182 @@ export const studentRepository: StudentRepository = {
       attachments: payload.attachments,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+    };
+  },
+
+  async getReviews(studentId: string): Promise<any[]> {
+    if (useFixtures()) {
+      return testStudentReviews.get(studentId) ?? [];
+    }
+    const userId = Number(studentId);
+    if (!Number.isFinite(userId)) return [];
+
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT r.id, r.property_id, r.student_id, r.landlord_id, r.landlord_stars, r.property_stars, r.comment, r.created_at,
+              p.title AS property_title, p.property_code, u.name AS landlord_name
+       FROM reviews r
+       JOIN properties p ON p.id = r.property_id
+       JOIN users u ON u.id = r.landlord_id
+       WHERE r.student_id = ?
+       ORDER BY r.created_at DESC`,
+      [userId],
+    );
+
+    return rows.map((row) => ({
+      id: Number(row.id),
+      propertyId: String(row.property_id),
+      property: row.property_title || row.property_code,
+      landlordId: String(row.landlord_id),
+      landlord: row.landlord_name || 'Landlord',
+      landlordStars: Number(row.landlord_stars),
+      propStars: Number(row.property_stars),
+      text: row.comment || '',
+      date: new Date(row.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+      createdAt: row.created_at.toISOString(),
+    }));
+  },
+
+  async submitReview(studentId: string, payload: { propertyId: string; landlordId?: string; landlordStars: number; propertyStars: number; comment?: string }): Promise<any> {
+    const userId = Number(studentId);
+    if (!Number.isFinite(userId)) throw new AppError(400, 'INVALID_USER', 'Invalid student ID');
+
+    if (useFixtures()) {
+      const review = {
+        id: Date.now(),
+        propertyId: payload.propertyId,
+        property: `Property ${payload.propertyId}`,
+        landlordId: payload.landlordId || '1',
+        landlord: 'Landlord',
+        landlordStars: payload.landlordStars,
+        propStars: payload.propertyStars,
+        text: payload.comment || '',
+        date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+        createdAt: new Date().toISOString(),
+      };
+      const list = testStudentReviews.get(studentId) ?? [];
+      list.unshift(review);
+      testStudentReviews.set(studentId, list);
+      return review;
+    }
+
+    const propId = await resolvePropertyId(payload.propertyId);
+    let landlordId = payload.landlordId ? Number(payload.landlordId) : NaN;
+    if (!Number.isFinite(landlordId)) {
+      const [propRows] = await db.query<RowDataPacket[]>('SELECT landlord_id FROM properties WHERE id = ? LIMIT 1', [propId]);
+      if (propRows[0]) landlordId = Number(propRows[0].landlord_id);
+    }
+    if (!Number.isFinite(landlordId)) landlordId = 1;
+
+    const [result] = await db.execute(
+      `INSERT INTO reviews (property_id, student_id, landlord_id, landlord_stars, property_stars, comment)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [propId, userId, landlordId, payload.landlordStars, payload.propertyStars, payload.comment ?? null],
+    );
+    const insertId = Number((result as { insertId?: number }).insertId ?? Date.now());
+
+    const [propRows] = await db.query<RowDataPacket[]>('SELECT title, property_code FROM properties WHERE id = ? LIMIT 1', [propId]);
+    const [userRows] = await db.query<RowDataPacket[]>('SELECT name FROM users WHERE id = ? LIMIT 1', [landlordId]);
+
+    return {
+      id: insertId,
+      propertyId: String(propId),
+      property: propRows[0]?.title || propRows[0]?.property_code || `Property ${propId}`,
+      landlordId: String(landlordId),
+      landlord: userRows[0]?.name || 'Landlord',
+      landlordStars: payload.landlordStars,
+      propStars: payload.propertyStars,
+      text: payload.comment || '',
+      date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+      createdAt: new Date().toISOString(),
+    };
+  },
+
+  async getComplaints(studentId: string): Promise<any[]> {
+    if (useFixtures()) {
+      return testStudentComplaints.get(studentId) ?? [];
+    }
+    const userId = Number(studentId);
+    if (!Number.isFinite(userId)) return [];
+
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT c.id, c.complainant_id, c.accused_id, c.property_id, c.category, c.description, c.status, c.created_at,
+              u.name AS accused_name, p.title AS property_title, p.property_code
+       FROM complaints c
+       LEFT JOIN users u ON u.id = c.accused_id
+       LEFT JOIN properties p ON p.id = c.property_id
+       WHERE c.complainant_id = ?
+       ORDER BY c.created_at DESC`,
+      [userId],
+    );
+
+    return rows.map((row) => ({
+      id: row.id,
+      against: row.accused_name || 'Landlord / User',
+      property: row.property_title || row.property_code || '',
+      category: row.category,
+      subject: row.description.includes(' — ') ? row.description.split(' — ')[0] : row.category,
+      description: row.description.includes(' — ') ? row.description.split(' — ').slice(1).join(' — ') : row.description,
+      date: new Date(row.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+      status: row.status,
+      createdAt: row.created_at.toISOString(),
+    }));
+  },
+
+  async submitComplaint(studentId: string, payload: { against?: string; property?: string; propertyId?: string; category: string; subject: string; description: string }): Promise<any> {
+    const userId = Number(studentId);
+    if (!Number.isFinite(userId)) throw new AppError(400, 'INVALID_USER', 'Invalid student ID');
+
+    const complaintId = `CMP-${Date.now().toString().slice(-6)}`;
+    const fullDesc = payload.subject ? `${payload.subject} — ${payload.description}` : payload.description;
+
+    if (useFixtures()) {
+      const complaint = {
+        id: complaintId,
+        against: payload.against || 'Support / Admin',
+        property: payload.property || '',
+        category: payload.category,
+        subject: payload.subject,
+        description: payload.description,
+        date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+        status: 'Submitted',
+        createdAt: new Date().toISOString(),
+      };
+      const list = testStudentComplaints.get(studentId) ?? [];
+      list.unshift(complaint);
+      testStudentComplaints.set(studentId, list);
+      return complaint;
+    }
+
+    let accusedId = 1; // Default to admin
+    if (payload.against?.trim()) {
+      const [userRows] = await db.query<RowDataPacket[]>('SELECT id FROM users WHERE name LIKE ? LIMIT 1', [`%${payload.against.trim()}%`]);
+      if (userRows[0]?.id) accusedId = Number(userRows[0].id);
+    }
+
+    let propId: number | null = null;
+    if (payload.propertyId) {
+      propId = await resolvePropertyId(payload.propertyId).catch(() => null);
+    } else if (payload.property) {
+      const [propRows] = await db.query<RowDataPacket[]>('SELECT id FROM properties WHERE title LIKE ? OR property_code = ? LIMIT 1', [`%${payload.property.trim()}%`, payload.property.trim()]);
+      if (propRows[0]?.id) propId = Number(propRows[0].id);
+    }
+
+    await db.execute(
+      `INSERT INTO complaints (id, complainant_id, accused_id, property_id, category, description, status)
+       VALUES (?, ?, ?, ?, ?, ?, 'Submitted')`,
+      [complaintId, userId, accusedId, propId, payload.category, fullDesc],
+    );
+
+    return {
+      id: complaintId,
+      against: payload.against || 'Landlord',
+      property: payload.property || '',
+      category: payload.category,
+      subject: payload.subject,
+      description: payload.description,
+      date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+      status: 'Submitted',
+      createdAt: new Date().toISOString(),
     };
   },
 };

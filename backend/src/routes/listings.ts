@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { getPublicListing, searchPublicListings } from '../listings/repository.js';
+import { getPublicListing, searchPublicListings, getListingReviews } from '../listings/repository.js';
 import { AppError } from '../errors/AppError.js';
 import { ListingType, SortDirectionSchema } from '../contracts/api.js';
 
@@ -35,6 +35,12 @@ router.get('/:identifier', asyncHandler(async (req, res) => {
   const listing = await getPublicListing(identifier);
   if (!listing) throw new AppError(404, 'LISTING_NOT_FOUND', 'Listing does not exist');
   res.json({ data: listing });
+}));
+
+router.get('/:identifier/reviews', asyncHandler(async (req, res) => {
+  const identifier = z.string().trim().min(1).max(80).parse(req.params.identifier);
+  const reviews = await getListingReviews(identifier);
+  res.json({ data: reviews });
 }));
 
 export { router as listingsRouter };

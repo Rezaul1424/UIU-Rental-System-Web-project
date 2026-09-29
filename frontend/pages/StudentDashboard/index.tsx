@@ -3,7 +3,7 @@ import type { Listing } from '../../types'
 import { listings } from '../../data'
 import { Badge } from '../../components/ui'
 import NotificationBell from '../../components/NotificationBell'
-import { addFavorite, cancelApplication as cancelStudentApplication, fetchPublicListings, getApplications, getFavorites, getLeases, getMaintenanceRequests, getProfile, getReceipts, getRentSummary, payRent, removeFavorite, submitApplication as submitStudentApplication, submitMaintenanceRequest, updateProfile as updateStudentProfile, type StudentApplication } from '../../lib/studentApi'
+import { addFavorite, cancelApplication as cancelStudentApplication, fetchPublicListings, getApplications, getFavorites, getLeases, getMaintenanceRequests, getProfile, getReceipts, getRentSummary, getStudentComplaints, getStudentReviews, payRent, removeFavorite, submitApplication as submitStudentApplication, submitMaintenanceRequest, submitStudentComplaint, submitStudentReview, updateProfile as updateStudentProfile, type StudentApplication } from '../../lib/studentApi'
 import { studentNotifs } from './constants'
 import StudentSidebarNav from './Sidebar'
 import OverviewPage from './pages/OverviewPage'
@@ -43,7 +43,7 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
       setDashboardError('')
 
       try {
-        const [profileResult, favoriteResult, applicationResult, rentResult, receiptResult, leaseResult, maintenanceResult, listingsResult] = await Promise.all([
+        const [profileResult, favoriteResult, applicationResult, rentResult, receiptResult, leaseResult, maintenanceResult, listingsResult, reviewsResult, complaintsResult] = await Promise.all([
           getProfile().catch(() => null),
           getFavorites().catch(() => []),
           getApplications().catch(() => []),
@@ -52,6 +52,8 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
           getLeases().catch(() => []),
           getMaintenanceRequests().catch(() => []),
           fetchPublicListings().catch(() => []),
+          getStudentReviews().catch(() => []),
+          getStudentComplaints().catch(() => []),
         ])
 
         if (!active) return
@@ -75,6 +77,30 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
           status: request.status,
           date: request.createdAt ? new Date(request.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A',
         })) : [])
+        if (Array.isArray(reviewsResult) && reviewsResult.length > 0) {
+          setReviewHistory(reviewsResult.map((r: { id?: number; landlordName?: string; propertyTitle?: string; propertyId?: number; landlordStars?: number; propertyStars?: number; comment?: string; createdAt?: string }) => ({
+            id: r.id ?? Date.now(),
+            landlord: r.landlordName ?? '',
+            property: r.propertyTitle ?? '',
+            listingId: r.propertyId ?? 0,
+            landlordStars: r.landlordStars ?? 0,
+            propStars: r.propertyStars ?? 0,
+            text: r.comment ?? '',
+            date: r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '',
+          })))
+        }
+        if (Array.isArray(complaintsResult) && complaintsResult.length > 0) {
+          setComplaints(complaintsResult.map((c: { id?: string; accusedName?: string; propertyTitle?: string; category?: string; description?: string; createdAt?: string; status?: string }) => ({
+            id: c.id ?? `CMP-${Date.now()}`,
+            against: c.accusedName ?? '',
+            property: c.propertyTitle ?? '',
+            category: c.category ?? 'Other',
+            subject: c.description?.split(' — ')[0] ?? '',
+            description: c.description?.split(' — ').slice(1).join(' — ') ?? c.description ?? '',
+            date: c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '',
+            status: (['Submitted', 'Under Review', 'Responded', 'Resolved', 'Closed'].includes(c.status ?? '') ? c.status : 'Submitted') as 'Submitted' | 'Under Review' | 'Responded' | 'Resolved' | 'Closed',
+          })))
+        }
       } catch (error) {
         if (!active) return
         setDashboardError(error instanceof Error ? error.message : 'Unable to load student dashboard data.')
@@ -374,9 +400,9 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
   const [reviewHistory, setReviewHistory] = useState<Review[]>([
     { id: 1, landlord: 'Nusrat Jahan', property: 'Shared Mess – South Campus', listingId: 2, landlordStars: 4, propStars: 3, text: 'Good facilities overall, but the common area could be cleaner. Landlord is responsive and polite.', date: '15 Jun 2026' },
   ])
-  const submitReview = () => {
+  const submitReview = async () => {
     if (landlordStars === 0 || propStars === 0) return
-    setReviewHistory(h => [...h, {
+    const optimistic: Review = {
       id: Date.now(),
       landlord: reviewTarget.landlord,
       property: reviewTarget.property,
@@ -384,12 +410,23 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
       landlordStars,
       propStars,
       text: reviewText,
-      date: '31 Jul 2026',
-    }])
+      date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+    }
+    setReviewHistory(h => [...h, optimistic])
     setLandlordStars(0)
     setPropStars(0)
     setReviewText('')
     setPage('review-history')
+    try {
+      await submitStudentReview({
+        propertyId: String(reviewTarget.listingId),
+        landlordStars,
+        propertyStars: propStars,
+        comment: reviewText,
+      })
+    } catch (err) {
+      console.error('Failed to submit review to backend:', err)
+    }
   }
   const alreadyReviewed = (listingId: number) => reviewHistory.some(r => r.listingId === listingId)
 
@@ -461,8 +498,9 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
   ])
   const [showComplaintForm, setShowComplaintForm] = useState(false)
   const [cForm, setCForm] = useState({ against: '', property: '', category: 'Maintenance Neglect', subject: '', description: '' })
-  const submitComplaint = () => {
+  const submitComplaint = async () => {
     if (!cForm.subject.trim() || !cForm.against.trim()) return
+    const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
     setComplaints(prev => [...prev, {
       id: `CMP-${String(prev.length + 1).padStart(3, '0')}`,
       against: cForm.against,
@@ -470,11 +508,22 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
       category: cForm.category,
       subject: cForm.subject,
       description: cForm.description,
-      date: '31 Jul 2026',
+      date: today,
       status: 'Submitted',
     }])
     setCForm({ against: '', property: '', category: 'Maintenance Neglect', subject: '', description: '' })
     setShowComplaintForm(false)
+    try {
+      await submitStudentComplaint({
+        against: cForm.against,
+        property: cForm.property,
+        category: cForm.category,
+        subject: cForm.subject,
+        description: cForm.description,
+      })
+    } catch (err) {
+      console.error('Failed to submit complaint to backend:', err)
+    }
   }
   // Maintenance chat (per request)
   const [maintChatThreads, setMaintChatThreads] = useState<Record<number, {from:'student'|'landlord';text:string}[]>>({

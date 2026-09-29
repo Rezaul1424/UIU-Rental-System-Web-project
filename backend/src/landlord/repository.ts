@@ -137,6 +137,7 @@ const testListings = new Map<string, TestListingRecord[]>();
 export const testApplications = new Map<string, TestApplicationRecord[]>();
 export const testMaintenanceRequests = new Map<string, TestMaintenanceRecord[]>();
 const testLeases = new Map<string, TestLeaseRecord[]>();
+export const testLandlordComplaints = new Map<string, any[]>();
 
 export function findTestListing(idOrCode: string): TestListingRecord | undefined {
   for (const listings of testListings.values()) {
@@ -243,6 +244,8 @@ export interface LandlordRepository {
   getLeases(landlordId: string): Promise<LandlordLeaseSummary[]>;
   getMaintenanceRequests(landlordId: string): Promise<Array<{ id: string; propertyId: string; studentId: string; landlordId: string; issue: string; priority: 'Low' | 'Medium' | 'High'; status: 'open' | 'in-progress' | 'resolved'; createdAt: string }>>;
   updateMaintenanceStatus(landlordId: string, requestId: string, payload: MaintenanceUpdatePayload): Promise<{ id: string; status: 'open' | 'in-progress' | 'resolved'; updatedAt: string }>;
+  getComplaints(landlordId: string): Promise<any[]>;
+  submitComplaint(landlordId: string, payload: { against?: string; property?: string; propertyId?: string; category: string; subject: string; description: string }): Promise<any>;
 }
 
 export const landlordRepository: LandlordRepository = {
@@ -744,6 +747,96 @@ export const landlordRepository: LandlordRepository = {
     const status = payload.status === 'open' || payload.status === 'in-progress' || payload.status === 'resolved' ? payload.status : 'open';
     await db.execute('UPDATE maintenance_requests SET status = ?, updated_at = NOW() WHERE id = ? AND landlord_id = ?', [status, numericRequestId, landlordNumericId]);
     return { id: String(numericRequestId), status, updatedAt: new Date().toISOString() };
+  },
+
+  async getComplaints(landlordId: string): Promise<any[]> {
+    if (useFixtures()) {
+      return testLandlordComplaints.get(landlordId) ?? [];
+    }
+    const userId = Number(landlordId);
+    if (!Number.isFinite(userId)) return [];
+
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT c.id, c.complainant_id, c.accused_id, c.property_id, c.category, c.description, c.status, c.created_at,
+              u.name AS accused_name, p.title AS property_title, p.property_code
+       FROM complaints c
+       LEFT JOIN users u ON u.id = c.accused_id
+       LEFT JOIN properties p ON p.id = c.property_id
+       WHERE c.complainant_id = ?
+       ORDER BY c.created_at DESC`,
+      [userId],
+    );
+
+    return rows.map((row) => ({
+      id: row.id,
+      against: row.accused_name || 'Tenant / User',
+      property: row.property_title || row.property_code || '',
+      category: row.category,
+      subject: row.description.includes(' — ') ? row.description.split(' — ')[0] : row.category,
+      description: row.description.includes(' — ') ? row.description.split(' — ').slice(1).join(' — ') : row.description,
+      date: new Date(row.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+      status: row.status,
+      createdAt: row.created_at.toISOString(),
+    }));
+  },
+
+  async submitComplaint(landlordId: string, payload: { against?: string; property?: string; propertyId?: string; category: string; subject: string; description: string }): Promise<any> {
+    const userId = Number(landlordId);
+    if (!Number.isFinite(userId)) throw new AppError(400, 'INVALID_USER', 'Invalid landlord ID');
+
+    const complaintId = `CMP-${Date.now().toString().slice(-6)}`;
+    const fullDesc = payload.subject ? `${payload.subject} — ${payload.description}` : payload.description;
+
+    if (useFixtures()) {
+      const complaint = {
+        id: complaintId,
+        against: payload.against || 'Tenant / User',
+        property: payload.property || '',
+        category: payload.category,
+        subject: payload.subject,
+        description: payload.description,
+        date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+        status: 'Submitted',
+        createdAt: new Date().toISOString(),
+      };
+      const list = testLandlordComplaints.get(landlordId) ?? [];
+      list.unshift(complaint);
+      testLandlordComplaints.set(landlordId, list);
+      return complaint;
+    }
+
+    let accusedId = 1; // Default to admin
+    if (payload.against?.trim()) {
+      const [userRows] = await db.query<RowDataPacket[]>('SELECT id FROM users WHERE name LIKE ? LIMIT 1', [`%${payload.against.trim()}%`]);
+      if (userRows[0]?.id) accusedId = Number(userRows[0].id);
+    }
+
+    let propId: number | null = null;
+    if (payload.propertyId) {
+      const [pRows] = await db.query<RowDataPacket[]>('SELECT id FROM properties WHERE (property_code = ? OR id = ?) LIMIT 1', [payload.propertyId, Number(payload.propertyId) || 0]);
+      if (pRows[0]?.id) propId = Number(pRows[0].id);
+    } else if (payload.property) {
+      const [pRows] = await db.query<RowDataPacket[]>('SELECT id FROM properties WHERE title LIKE ? OR property_code = ? LIMIT 1', [`%${payload.property.trim()}%`, payload.property.trim()]);
+      if (pRows[0]?.id) propId = Number(pRows[0].id);
+    }
+
+    await db.execute(
+      `INSERT INTO complaints (id, complainant_id, accused_id, property_id, category, description, status)
+       VALUES (?, ?, ?, ?, ?, ?, 'Submitted')`,
+      [complaintId, userId, accusedId, propId, payload.category, fullDesc],
+    );
+
+    return {
+      id: complaintId,
+      against: payload.against || 'Tenant',
+      property: payload.property || '',
+      category: payload.category,
+      subject: payload.subject,
+      description: payload.description,
+      date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+      status: 'Submitted',
+      createdAt: new Date().toISOString(),
+    };
   },
 };
 

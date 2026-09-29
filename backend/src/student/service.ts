@@ -53,4 +53,16 @@ export const studentService = {
   async payRentObligation(studentId: string, obligationId: string, method?: string): Promise<{ receiptNumber: string; paidAt: string }> {
     return studentRepository.payRentObligation(studentId, obligationId, method);
   },
+  async getReviews(studentId: string): Promise<any[]> {
+    return studentRepository.getReviews(studentId);
+  },
+  async submitReview(studentId: string, payload: { propertyId: string; landlordId?: string; landlordStars: number; propertyStars: number; comment?: string }): Promise<any> {
+    return studentRepository.submitReview(studentId, payload);
+  },
+  async getComplaints(studentId: string): Promise<any[]> {
+    return studentRepository.getComplaints(studentId);
+  },
+  async submitComplaint(studentId: string, payload: { against?: string; property?: string; propertyId?: string; category: string; subject: string; description: string }): Promise<any> {
+    return studentRepository.submitComplaint(studentId, payload);
+  },
 };

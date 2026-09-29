@@ -188,3 +188,20 @@ export const updateMaintenanceStatus = async (requestId: string | number, payloa
   api.patch(`/api/v1/landlord/maintenance/${requestId}/status`, payload);
 
 export const deleteListing = async (listingId: string | number) => api.delete(`/api/v1/landlord/listings/${listingId}`);
+
+export const getLandlordComplaints = async () => {
+  const payload = await api.get<Array<any> | { data?: Array<any> }>('/api/v1/landlord/complaints');
+  return Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
+};
+
+export const submitLandlordComplaint = async (payload: {
+  against?: string;
+  property?: string;
+  propertyId?: string;
+  category: string;
+  subject?: string;
+  description: string;
+}) => {
+  return api.post('/api/v1/landlord/complaints', payload);
+};
+

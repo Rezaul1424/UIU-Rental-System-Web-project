@@ -133,4 +133,30 @@ router.delete('/listings/:listingId', asyncHandler(async (req, res) => {
   res.status(204).send();
 }));
 
+const landlordComplaintSchema = z.object({
+  against: z.string().trim().optional(),
+  property: z.string().trim().optional(),
+  propertyId: z.string().trim().optional(),
+  category: z.string().trim().min(1).max(100),
+  subject: z.string().trim().max(255).optional().default(''),
+  description: z.string().trim().min(1).max(2000),
+});
+
+router.get('/complaints', asyncHandler(async (req, res) => {
+  const currentUser = req.user;
+  if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+
+  const complaints = await landlordService.getComplaints(currentUser.id);
+  res.json({ data: complaints });
+}));
+
+router.post('/complaints', asyncHandler(async (req, res) => {
+  const currentUser = req.user;
+  if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+
+  const payload = landlordComplaintSchema.parse(req.body);
+  const complaint = await landlordService.submitComplaint(currentUser.id, payload);
+  res.status(201).json({ data: complaint });
+}));
+
 export { router as landlordRouter };

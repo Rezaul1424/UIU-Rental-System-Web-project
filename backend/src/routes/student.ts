@@ -192,4 +192,55 @@ router.post('/maintenance', asyncHandler(async (req, res) => {
   res.status(201).json({ data: request });
 }));
 
+const reviewPayloadSchema = z.object({
+  propertyId: z.string().trim().min(1),
+  landlordId: z.string().trim().min(1).optional(),
+  landlordStars: z.coerce.number().int().min(1).max(5),
+  propertyStars: z.coerce.number().int().min(1).max(5),
+  comment: z.string().trim().max(2000).optional(),
+});
+
+const complaintPayloadSchema = z.object({
+  against: z.string().trim().optional(),
+  property: z.string().trim().optional(),
+  propertyId: z.string().trim().optional(),
+  category: z.string().trim().min(1).max(100),
+  subject: z.string().trim().max(255).optional().default(''),
+  description: z.string().trim().min(1).max(2000),
+});
+
+router.get('/reviews', asyncHandler(async (req, res) => {
+  const currentUser = req.user;
+  if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+
+  const reviews = await studentService.getReviews(currentUser.id);
+  res.json({ data: reviews });
+}));
+
+router.post('/reviews', asyncHandler(async (req, res) => {
+  const currentUser = req.user;
+  if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+
+  const payload = reviewPayloadSchema.parse(req.body);
+  const review = await studentService.submitReview(currentUser.id, payload);
+  res.status(201).json({ data: review });
+}));
+
+router.get('/complaints', asyncHandler(async (req, res) => {
+  const currentUser = req.user;
+  if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+
+  const complaints = await studentService.getComplaints(currentUser.id);
+  res.json({ data: complaints });
+}));
+
+router.post('/complaints', asyncHandler(async (req, res) => {
+  const currentUser = req.user;
+  if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+
+  const payload = complaintPayloadSchema.parse(req.body);
+  const complaint = await studentService.submitComplaint(currentUser.id, payload);
+  res.status(201).json({ data: complaint });
+}));
+
 export { router as studentRouter };

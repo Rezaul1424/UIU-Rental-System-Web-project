@@ -41,4 +41,10 @@ export const landlordService = {
   async updateMaintenanceStatus(landlordId: string, requestId: string, payload: MaintenanceUpdatePayload): Promise<{ id: string; status: 'open' | 'in-progress' | 'resolved'; updatedAt: string }> {
     return landlordRepository.updateMaintenanceStatus(landlordId, requestId, payload);
   },
+  async getComplaints(landlordId: string): Promise<any[]> {
+    return landlordRepository.getComplaints(landlordId);
+  },
+  async submitComplaint(landlordId: string, payload: { against?: string; property?: string; propertyId?: string; category: string; subject: string; description: string }): Promise<any> {
+    return landlordRepository.submitComplaint(landlordId, payload);
+  },
 };

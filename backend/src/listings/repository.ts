@@ -203,3 +203,27 @@ export async function getPublicListing(identifier: string): Promise<Listing | un
   const [amenities] = await db.query<AmenityRow[]>('SELECT pa.property_id, a.name FROM property_amenities pa JOIN amenities a ON a.id = pa.amenity_id WHERE pa.property_id = ?', [row.id]);
   return mapListing(row, images, amenities);
 }
+
+export async function getListingReviews(identifier: string): Promise<any[]> {
+  if (useFixtures()) return [];
+  const [rows] = await db.query<RowDataPacket[]>(
+    `SELECT r.id, r.property_id, r.student_id, r.landlord_id, r.landlord_stars, r.property_stars, r.comment, r.created_at,
+            u.name AS student_name
+     FROM reviews r
+     JOIN properties p ON p.id = r.property_id
+     JOIN users u ON u.id = r.student_id
+     WHERE p.property_code = ? OR CAST(p.id AS CHAR) = ?
+     ORDER BY r.created_at DESC`,
+    [identifier, identifier],
+  );
+
+  return rows.map((row) => ({
+    id: Number(row.id),
+    studentName: row.student_name,
+    landlordStars: Number(row.landlord_stars),
+    propertyStars: Number(row.property_stars),
+    comment: row.comment || '',
+    createdAt: row.created_at.toISOString(),
+  }));
+}
+

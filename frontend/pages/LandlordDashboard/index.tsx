@@ -3,7 +3,7 @@ import type { Listing } from '../../types'
 import { listings } from '../../data'
 import ListingDetailPage from '../../components/ListingDetail'
 import NotificationBell from '../../components/NotificationBell'
-import { createListing, deleteListing, getApplications, getLeases, getMaintenanceRequests, getMyListings, getProfile, reviewApplication, updateListing, updateMaintenanceStatus, updateProfile as updateLandlordProfile } from '../../lib/landlordApi'
+import { createListing, deleteListing, getApplications, getLeases, getLandlordComplaints, getMaintenanceRequests, getMyListings, getProfile, reviewApplication, submitLandlordComplaint as submitLandlordComplaintApi, updateListing, updateMaintenanceStatus, updateProfile as updateLandlordProfile } from '../../lib/landlordApi'
 import { landlordNotifs } from './constants'
 import LandlordSidebarNav, { type LandlordPage } from './Sidebar'
 import type { MaintReq, RequestItem, ChatMsg, MaintStage } from './types'
@@ -28,6 +28,10 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
   const [leases, setLeases] = useState<Array<{ id?: string; propertyId: string; propertyTitle?: string; propertyCode?: string; studentId?: string; studentName?: string; status?: string; monthlyRent?: number; startDate?: string; endDate?: string }>>([])
   const [requests, setRequests] = useState<RequestItem[]>([])
   const [mReqs, setMReqs] = useState<MaintReq[]>([])
+  type LandlordComplaint = { id: string; against: string; property: string; category: string; subject: string; description: string; date: string; status: 'Submitted' | 'Under Review' | 'Responded' | 'Resolved' | 'Closed' }
+  const [landlordComplaints, setLandlordComplaints] = useState<LandlordComplaint[]>([])
+  const [showLandlordComplaintForm, setShowLandlordComplaintForm] = useState(false)
+  const [lcForm, setLcForm] = useState({ against: '', property: '', category: 'Late Payment', subject: '', description: '' })
   const openLandlordListing = (l: Listing) => { setLandlordView(l); setPage('listing-detail') }
 
   const formatDisplayDate = (value?: string) => {
@@ -60,12 +64,13 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
       setDashboardError('')
 
       try {
-        const [profileResult, listingsResult, applicationsResult, leasesResult, maintenanceResult] = await Promise.all([
+        const [profileResult, listingsResult, applicationsResult, leasesResult, maintenanceResult, landComplaintsResult] = await Promise.all([
           getProfile().catch(() => null),
           getMyListings().catch(() => []),
           getApplications().catch(() => []),
           getLeases().catch(() => []),
           getMaintenanceRequests().catch(() => []),
+          getLandlordComplaints().catch(() => []),
         ])
 
         if (!active) return
@@ -107,6 +112,18 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
             estimatedDate: 'TBD',
             comments: [{ from: 'tenant', text: request.description ?? 'Maintenance request submitted.', date: request.createdAt ? formatDisplayDate(request.createdAt) : 'Today' }],
             hasPhotos: false,
+          })))
+        }
+        if (Array.isArray(landComplaintsResult) && landComplaintsResult.length > 0) {
+          setLandlordComplaints(landComplaintsResult.map((c: any) => ({
+            id: c.id ?? `CMP-${Date.now()}`,
+            against: c.accusedName ?? '',
+            property: c.propertyTitle ?? '',
+            category: c.category ?? 'Other',
+            subject: c.description?.split(' — ')[0] ?? '',
+            description: c.description?.split(' — ').slice(1).join(' — ') ?? c.description ?? '',
+            date: c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '',
+            status: (['Submitted', 'Under Review', 'Responded', 'Resolved', 'Closed'].includes(c.status ?? '') ? c.status : 'Submitted') as any,
           })))
         }
       } catch (error) {
@@ -546,13 +563,10 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
     }
   }
 
-  // Landlord complaints
-  type LandlordComplaint = { id: string; against: string; property: string; category: string; subject: string; description: string; date: string; status: 'Submitted' | 'Under Review' | 'Responded' | 'Resolved' | 'Closed' }
-  const [landlordComplaints, setLandlordComplaints] = useState<LandlordComplaint[]>([])
-  const [showLandlordComplaintForm, setShowLandlordComplaintForm] = useState(false)
-  const [lcForm, setLcForm] = useState({ against: '', property: '', category: 'Late Payment', subject: '', description: '' })
-  const submitLandlordComplaint = () => {
+  // Landlord complaints submit handler
+  const submitLandlordComplaint = async () => {
     if (!lcForm.subject.trim() || !lcForm.against.trim()) return
+    const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
     setLandlordComplaints(prev => [...prev, {
       id: `CMP-${String(prev.length + 1).padStart(3, '0')}`,
       against: lcForm.against,
@@ -560,11 +574,23 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
       category: lcForm.category,
       subject: lcForm.subject,
       description: lcForm.description,
-      date: '31 Jul 2026',
+      date: today,
       status: 'Submitted',
     }])
+    const savedForm = { ...lcForm }
     setLcForm({ against: '', property: '', category: 'Late Payment', subject: '', description: '' })
     setShowLandlordComplaintForm(false)
+    try {
+      await submitLandlordComplaintApi({
+        against: savedForm.against,
+        property: savedForm.property,
+        category: savedForm.category,
+        subject: savedForm.subject,
+        description: savedForm.description,
+      })
+    } catch (err) {
+      console.error('Failed to submit landlord complaint to backend:', err)
+    }
   }
 
   const isEditDirty = editListingId !== null && (() => {

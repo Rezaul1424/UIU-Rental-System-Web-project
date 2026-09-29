@@ -334,3 +334,39 @@ export const payRent = async (obligationId: string, paymentInfo?: { method?: str
   return api.post<{ receiptNumber: string; paidAt: string }>(`/api/v1/student/rent/${obligationId}/pay`, paymentInfo ?? {});
 };
 
+export const getStudentReviews = async () => {
+  const payload = await api.get<Array<any> | { data?: Array<any> }>('/api/v1/student/reviews');
+  return Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
+};
+
+export const submitStudentReview = async (payload: {
+  propertyId: string | number;
+  landlordId?: string | number;
+  landlordStars: number;
+  propertyStars: number;
+  comment?: string;
+}) => {
+  return api.post('/api/v1/student/reviews', {
+    ...payload,
+    propertyId: String(payload.propertyId),
+    landlordId: payload.landlordId ? String(payload.landlordId) : undefined,
+  });
+};
+
+export const getStudentComplaints = async () => {
+  const payload = await api.get<Array<any> | { data?: Array<any> }>('/api/v1/student/complaints');
+  return Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
+};
+
+export const submitStudentComplaint = async (payload: {
+  against?: string;
+  property?: string;
+  propertyId?: string;
+  category: string;
+  subject?: string;
+  description: string;
+}) => {
+  return api.post('/api/v1/student/complaints', payload);
+};
+
+
