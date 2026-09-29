@@ -35,6 +35,7 @@ export interface StudentRepository {
   getReceipts(studentId: string): Promise<StudentReceiptSummary[]>;
   getMaintenanceRequests(studentId: string): Promise<StudentMaintenanceRequest[]>;
   submitMaintenanceRequest(studentId: string, payload: Omit<StudentMaintenanceRequest, 'id' | 'status' | 'createdAt' | 'updatedAt'>): Promise<StudentMaintenanceRequest>;
+  updateProfile(userId: string, payload: { name?: string; phone?: string; studentId?: string }): Promise<StudentProfile | null>;
 }
 
 type StudentUserRow = RowDataPacket & {
@@ -43,6 +44,7 @@ type StudentUserRow = RowDataPacket & {
   name: string;
   email: string;
   student_id?: string | null;
+  phone?: string | null;
   status: 'active' | 'pending' | 'suspended' | 'deactivated';
 };
 
@@ -125,6 +127,7 @@ const toStudentProfile = (row: StudentUserRow): StudentProfile => ({
   name: row.name,
   email: row.email,
   studentId: row.student_id ?? undefined,
+  phone: row.phone ?? undefined,
   role: row.role,
   status: row.status,
 });
@@ -162,8 +165,38 @@ export const studentRepository: StudentRepository = {
     const studentId = Number(userId);
     if (!Number.isFinite(studentId)) return null;
 
-    const [rows] = await db.query<StudentUserRow[]>('SELECT id, role, name, email, student_id, status FROM users WHERE id = ? AND role = ? LIMIT 1', [studentId, 'student']);
+    const [rows] = await db.query<StudentUserRow[]>('SELECT id, role, name, email, student_id, phone, status FROM users WHERE id = ? AND role = ? LIMIT 1', [studentId, 'student']);
     return rows[0] ? toStudentProfile(rows[0]) : null;
+  },
+
+  async updateProfile(userId: string, payload: { name?: string; phone?: string; studentId?: string }): Promise<StudentProfile | null> {
+    const studentId = Number(userId);
+    if (!Number.isFinite(studentId)) return null;
+
+    if (useFixtures()) {
+      return {
+        id: userId,
+        name: payload.name ?? 'Student',
+        email: 'student@uiu.ac.bd',
+        studentId: payload.studentId ?? '01124000001',
+        phone: payload.phone ?? '+8801700000000',
+        role: 'student',
+        status: 'active',
+      };
+    }
+
+    const updates: string[] = [];
+    const values: (string | number)[] = [];
+    if (payload.name) { updates.push('name = ?'); values.push(payload.name); }
+    if (payload.phone) { updates.push('phone = ?'); values.push(payload.phone); }
+    if (payload.studentId) { updates.push('student_id = ?'); values.push(payload.studentId); }
+
+    if (updates.length > 0) {
+      values.push(studentId);
+      await db.execute(`UPDATE users SET ${updates.join(', ')}, updated_at = NOW() WHERE id = ? AND role = 'student'`, values);
+    }
+
+    return this.getProfile(userId);
   },
 
   async getFavorites(studentId: string): Promise<FavoriteListing[]> {

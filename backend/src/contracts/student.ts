@@ -5,6 +5,7 @@ export const StudentProfileSchema = z.object({
   name: z.string().trim().min(1),
   email: z.string().trim().email(),
   studentId: z.string().trim().min(3).max(30).optional(),
+  phone: z.string().trim().min(7).max(20).optional(),
   role: z.enum(['admin', 'landlord', 'student', 'guest']).default('student'),
   status: z.enum(['active', 'pending', 'suspended', 'deactivated']).default('active'),
 });

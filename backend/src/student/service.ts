@@ -14,6 +14,9 @@ export const studentService = {
   async getProfile(userId: string): Promise<StudentProfile | null> {
     return studentRepository.getProfile(userId);
   },
+  async updateProfile(userId: string, payload: { name?: string; phone?: string; studentId?: string }): Promise<StudentProfile | null> {
+    return studentRepository.updateProfile(userId, payload);
+  },
   async getFavorites(studentId: string): Promise<FavoriteListing[]> {
     return studentRepository.getFavorites(studentId);
   },

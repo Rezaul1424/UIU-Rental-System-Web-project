@@ -8,6 +8,6 @@ export type Review = { id: number; landlord: string; property: string; listingId
 
 export type ChatMsg = { from: 'student' | 'landlord'; text: string }
 
-export type MaintenanceRequest = { id: number; issue: string; status: string; date: string }
+export type MaintenanceRequest = { id: number; issue: string; status: string; date: string; priority?: string; description?: string; property?: string }
 
 export type Complaint = { id: string; against: string; property: string; category: string; subject: string; description: string; date: string; status: 'Submitted' | 'Under Review' | 'Responded' | 'Resolved' | 'Closed' }

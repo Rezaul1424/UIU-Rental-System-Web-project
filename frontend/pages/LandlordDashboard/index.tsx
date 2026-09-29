@@ -3,7 +3,7 @@ import type { Listing } from '../../types'
 import { listings } from '../../data'
 import ListingDetailPage from '../../components/ListingDetail'
 import NotificationBell from '../../components/NotificationBell'
-import { createListing, deleteListing, getApplications, getLeases, getMaintenanceRequests, getMyListings, getProfile, reviewApplication, updateListing, updateMaintenanceStatus } from '../../lib/landlordApi'
+import { createListing, deleteListing, getApplications, getLeases, getMaintenanceRequests, getMyListings, getProfile, reviewApplication, updateListing, updateMaintenanceStatus, updateProfile as updateLandlordProfile } from '../../lib/landlordApi'
 import { landlordNotifs } from './constants'
 import LandlordSidebarNav, { type LandlordPage } from './Sidebar'
 import type { MaintReq, RequestItem, ChatMsg, MaintStage } from './types'
@@ -99,8 +99,8 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
             id: Number(request.id ?? Date.now()),
             title: request.issue ?? 'Maintenance issue',
             description: request.description ?? 'Maintenance request submitted by the tenant.',
-            listing: `Property ${request.propertyId}`,
-            tenant: `Student ${request.studentId}`,
+            listing: request.propertyTitle || request.propertyCode || `Property ${request.propertyId}`,
+            tenant: request.studentName || `Student ${request.studentId}`,
             date: request.createdAt ? formatDisplayDate(request.createdAt) : 'N/A',
             priority: ['Low', 'Medium', 'High'].includes(String(request.priority)) ? (request.priority as 'Low' | 'Medium' | 'High') : 'Medium',
             stage: mapMaintenanceStatusToStage(request.status),
@@ -120,6 +120,20 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
     loadLandlordData()
     return () => { active = false }
   }, [])
+
+  const handleUpdateLandlordProfile = async (data: { name?: string; phone?: string; companyName?: string }): Promise<boolean> => {
+    try {
+      const updated = await updateLandlordProfile(data)
+      const res = updated && 'data' in updated ? (updated as any).data : updated
+      setLandlordProfile(prev => ({ ...prev, ...res }))
+      setDashboardError('')
+      return true
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Unable to update profile.')
+      return false
+    }
+  }
+
   const [editListingId, setEditListingId] = useState<number | null>(null)
   const [editForm, setEditForm] = useState({ title: '', type: 'Single', price: '', distance: '', description: '', status: 'approved' })
   const [editFacilities, setEditFacilities] = useState<string[]>([])
@@ -812,6 +826,8 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
           {page === 'settings' && (
             <SettingsPage
               userName={userName}
+              profile={landlordProfile}
+              onSaveProfile={handleUpdateLandlordProfile}
               myListingsCount={myListings.length}
               landlordComplaints={landlordComplaints}
               showLandlordComplaintForm={showLandlordComplaintForm}

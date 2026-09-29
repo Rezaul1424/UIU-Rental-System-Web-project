@@ -1,7 +1,11 @@
+import { useRef, useState } from 'react'
 import type { Application, Complaint, Review } from '../types'
+import type { StudentProfile } from '../../../lib/studentApi'
 
 type SettingsPageProps = {
   userName: string
+  profile?: StudentProfile | null
+  onSaveProfile?: (data: { name?: string; phone?: string; studentId?: string }) => Promise<boolean>
   applications: Application[]
   reviewHistory: Review[]
   complaints: Complaint[]
@@ -13,7 +17,26 @@ type SettingsPageProps = {
   setShowDeactivateConfirm: (value: boolean) => void
 }
 
-export default function SettingsPage({ userName, applications, reviewHistory, complaints, showComplaintForm, setShowComplaintForm, cForm, setCForm, submitComplaint, setShowDeactivateConfirm }: SettingsPageProps) {
+export default function SettingsPage({ userName, profile, onSaveProfile, applications, reviewHistory, complaints, showComplaintForm, setShowComplaintForm, cForm, setCForm, submitComplaint, setShowDeactivateConfirm }: SettingsPageProps) {
+  const nameRef = useRef<HTMLInputElement>(null)
+  const phoneRef = useRef<HTMLInputElement>(null)
+  const studentIdRef = useRef<HTMLInputElement>(null)
+  const [saving, setSaving] = useState(false)
+  const [saveSuccess, setSaveSuccess] = useState(false)
+
+  const handleSave = async () => {
+    if (!onSaveProfile) return
+    setSaving(true)
+    setSaveSuccess(false)
+    const ok = await onSaveProfile({
+      name: nameRef.current?.value || undefined,
+      phone: phoneRef.current?.value || undefined,
+      studentId: studentIdRef.current?.value || undefined,
+    })
+    setSaving(false)
+    if (ok) setSaveSuccess(true)
+  }
+
   return (
     <>
       <div>
@@ -33,19 +56,27 @@ export default function SettingsPage({ userName, applications, reviewHistory, co
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              {[
-                { label: 'Full Name', value: userName, placeholder: 'Your full name' },
-                { label: 'Email Address', value: 'student@uiu.ac.bd', placeholder: 'your@email.com' },
-                { label: 'Student ID', value: '2024-CSE-104', placeholder: 'Student ID' },
-                { label: 'Phone Number', value: '+880 1712-345678', placeholder: '+880...' },
-              ].map(f => (
-                <div key={f.label}>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">{f.label}</label>
-                  <input defaultValue={f.value} placeholder={f.placeholder} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#111827]" />
-                </div>
-              ))}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Full Name</label>
+                <input ref={nameRef} defaultValue={profile?.name ?? userName} placeholder="Your full name" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#111827]" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Email Address</label>
+                <input defaultValue={profile?.email ?? 'student@uiu.ac.bd'} placeholder="your@email.com" disabled className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 text-gray-400 cursor-not-allowed" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Student ID</label>
+                <input ref={studentIdRef} defaultValue={profile?.studentId ?? ''} placeholder="Student ID" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#111827]" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Phone Number</label>
+                <input ref={phoneRef} defaultValue={profile?.phone ?? ''} placeholder="+880..." className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#111827]" />
+              </div>
             </div>
-            <button className="bg-[#111827] text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-[#1f2937] transition-colors">Save Changes</button>
+            <div className="flex items-center gap-3">
+              <button onClick={handleSave} disabled={saving} className="bg-[#111827] text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-[#1f2937] transition-colors disabled:opacity-60">{saving ? 'Saving…' : 'Save Changes'}</button>
+              {saveSuccess && <span className="text-sm text-emerald-600 font-medium">Profile updated ✓</span>}
+            </div>
           </div>
           <div className="bg-white rounded-2xl shadow-sm p-6 space-y-4">
             <div className="font-semibold text-[#111827]">Notification Preferences</div>

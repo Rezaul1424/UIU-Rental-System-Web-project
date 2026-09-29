@@ -3,7 +3,7 @@ import type { Listing } from '../../types'
 import { listings } from '../../data'
 import { Badge } from '../../components/ui'
 import NotificationBell from '../../components/NotificationBell'
-import { addFavorite, cancelApplication as cancelStudentApplication, fetchPublicListings, getApplications, getFavorites, getLeases, getMaintenanceRequests, getProfile, getReceipts, getRentSummary, removeFavorite, submitApplication as submitStudentApplication, submitMaintenanceRequest, type StudentApplication } from '../../lib/studentApi'
+import { addFavorite, cancelApplication as cancelStudentApplication, fetchPublicListings, getApplications, getFavorites, getLeases, getMaintenanceRequests, getProfile, getReceipts, getRentSummary, removeFavorite, submitApplication as submitStudentApplication, submitMaintenanceRequest, updateProfile as updateStudentProfile, type StudentApplication } from '../../lib/studentApi'
 import { studentNotifs } from './constants'
 import StudentSidebarNav from './Sidebar'
 import OverviewPage from './pages/OverviewPage'
@@ -63,11 +63,15 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
         setApplications(Array.isArray(applicationResult) ? applicationResult : [])
         setRentSummary(Array.isArray(rentResult) ? rentResult : [])
         setReceipts(Array.isArray(receiptResult) ? receiptResult : [])
-        setLeases(Array.isArray(leaseResult) ? leaseResult : [])
+        const leasesList = Array.isArray(leaseResult) ? leaseResult : []
+        setLeases(leasesList)
         setAllListings(Array.isArray(listingsResult) ? listingsResult : [])
         setMyRequests(Array.isArray(maintenanceResult) ? maintenanceResult.map((request) => ({
           id: Number(request.id ?? Date.now()),
           issue: request.issue,
+          priority: request.priority,
+          description: request.description,
+          property: leasesList.find(l => l.propertyId === request.propertyId)?.propertyTitle || (leasesList[0]?.propertyTitle ?? 'Rental Unit'),
           status: request.status,
           date: request.createdAt ? new Date(request.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A',
         })) : [])
@@ -216,7 +220,7 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
       return
     }
 
-    const primaryLease = leases[0]
+    const primaryLease = leases.find((l) => l.status === 'active') ?? leases[0]
     try {
       await submitMaintenanceRequest({
         propertyId: primaryLease.propertyId,
@@ -231,14 +235,30 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
       setMyRequests(Array.isArray(refreshed) ? refreshed.map((request) => ({
         id: Number(request.id ?? Date.now()),
         issue: request.issue,
+        priority: request.priority,
+        description: request.description,
+        property: primaryLease.propertyTitle || 'Rental Unit',
         status: request.status,
-        date: request.createdAt ? new Date(request.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A',
+        date: request.createdAt ? new Date(request.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Today',
       })) : [])
       setNewReq({ issue: '', description: '', priority: 'Medium' })
       setShowNewReq(false)
       setDashboardError('')
     } catch (error) {
       setDashboardError(error instanceof Error ? error.message : 'Maintenance request submission failed.')
+    }
+  }
+
+  const handleUpdateStudentProfile = async (data: { name?: string; phone?: string; studentId?: string }): Promise<boolean> => {
+    try {
+      const updated = await updateStudentProfile(data)
+      const res = updated && 'data' in updated ? (updated as any).data : updated
+      setStudentProfile(prev => ({ ...prev, ...res }))
+      setDashboardError('')
+      return true
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Unable to update profile.')
+      return false
     }
   }
 
@@ -656,6 +676,8 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
           {page === 'settings' && (
             <SettingsPage
               userName={userName}
+              profile={studentProfile}
+              onSaveProfile={handleUpdateStudentProfile}
               applications={applications}
               reviewHistory={reviewHistory}
               complaints={complaints}

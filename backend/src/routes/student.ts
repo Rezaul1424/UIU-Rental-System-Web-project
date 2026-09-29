@@ -47,11 +47,26 @@ router.get('/profile', asyncHandler(async (req, res) => {
     name: currentUser.name,
     email: currentUser.email,
     studentId: currentUser.studentId,
+    phone: currentUser.phone,
     role: currentUser.role,
     status: currentUser.status,
   });
 
   res.json({ data: safeProfile });
+}));
+
+router.patch('/profile', asyncHandler(async (req, res) => {
+  const currentUser = req.user;
+  if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+
+  const payload = z.object({
+    name: z.string().trim().min(1).optional(),
+    phone: z.string().trim().min(7).max(20).optional(),
+    studentId: z.string().trim().min(3).max(30).optional(),
+  }).parse(req.body);
+
+  const updated = await studentService.updateProfile(currentUser.id, payload);
+  res.json({ data: updated });
 }));
 
 router.get('/favorites', asyncHandler(async (req, res) => {

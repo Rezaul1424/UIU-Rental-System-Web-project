@@ -47,12 +47,15 @@ export type LandlordProfile = {
   userId: string;
   name: string;
   email: string;
+  phone?: string;
   companyName?: string;
   propertyCount: number;
   isVerified: boolean;
 };
 
 export const getProfile = () => api.get<LandlordProfile>('/api/v1/landlord/profile');
+export const updateProfile = (payload: { name?: string; phone?: string; companyName?: string }) =>
+  api.patch<LandlordProfile>('/api/v1/landlord/profile', payload);
 
 export const getMyListings = async (): Promise<Listing[]> => {
   const payload = await api.get<Array<any>>('/api/v1/landlord/listings');
@@ -100,7 +103,10 @@ export type LandlordLeaseSummary = {
 export type LandlordMaintenanceRequest = {
   id: string;
   propertyId: string;
+  propertyTitle?: string;
+  propertyCode?: string;
   studentId: string;
+  studentName?: string;
   landlordId: string;
   issue: string;
   description?: string;
@@ -117,7 +123,13 @@ export const getApplications = async (): Promise<LandlordApplication[]> => {
   return applications.map((application) => ({
     id: application.id,
     propertyId: application.propertyId,
+    propertyTitle: application.propertyTitle,
+    propertyCode: application.propertyCode,
     studentId: application.studentId,
+    studentName: application.studentName,
+    studentCardNo: application.studentCardNo,
+    contactPhone: application.contactPhone,
+    department: application.department,
     landlordId: application.landlordId,
     status: application.status ?? 'under-review',
     createdAt: application.createdAt,
@@ -134,7 +146,10 @@ export const getLeases = async (): Promise<LandlordLeaseSummary[]> => {
   return leases.map((lease) => ({
     id: String(lease.id ?? lease.leaseId ?? ''),
     propertyId: String(lease.propertyId ?? lease.property_id ?? lease.listingId ?? ''),
+    propertyTitle: lease.propertyTitle ?? lease.property_title,
+    propertyCode: lease.propertyCode ?? lease.property_code,
     studentId: String(lease.studentId ?? lease.student_id ?? ''),
+    studentName: lease.studentName ?? lease.student_name,
     landlordId: String(lease.landlordId ?? lease.landlord_id ?? ''),
     status: ['pending', 'active', 'ended', 'terminated'].includes(String(lease.status)) ? lease.status : 'active',
     startDate: lease.startDate ?? lease.start_date,
@@ -152,7 +167,10 @@ export const getMaintenanceRequests = async (): Promise<LandlordMaintenanceReque
   return requests.map((request) => ({
     id: String(request.id ?? request.requestId ?? ''),
     propertyId: String(request.propertyId ?? request.property_id ?? ''),
+    propertyTitle: request.propertyTitle ?? request.property_title,
+    propertyCode: request.propertyCode ?? request.property_code,
     studentId: String(request.studentId ?? request.student_id ?? ''),
+    studentName: request.studentName ?? request.student_name,
     landlordId: String(request.landlordId ?? request.landlord_id ?? ''),
     issue: request.issue ?? 'Maintenance request',
     description: request.description,

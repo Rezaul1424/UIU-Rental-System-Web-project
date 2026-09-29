@@ -28,6 +28,20 @@ router.get('/profile', asyncHandler(async (req, res) => {
   }) });
 }));
 
+router.patch('/profile', asyncHandler(async (req, res) => {
+  const currentUser = req.user;
+  if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+
+  const payload = z.object({
+    name: z.string().trim().min(1).optional(),
+    phone: z.string().trim().min(7).max(20).optional(),
+    companyName: z.string().trim().min(1).optional(),
+  }).parse(req.body);
+
+  const updated = await landlordService.updateProfile(currentUser.id, payload);
+  res.json({ data: updated });
+}));
+
 router.get('/listings', asyncHandler(async (req, res) => {
   const currentUser = req.user;
   if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');

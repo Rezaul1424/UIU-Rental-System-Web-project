@@ -89,6 +89,9 @@ type DbMaintenanceRow = RowDataPacket & {
   status: 'open' | 'in-progress' | 'resolved';
   created_at: Date;
   updated_at: Date;
+  student_name?: string | null;
+  property_title?: string | null;
+  property_code?: string | null;
 };
 
 type TestListingRecord = LandlordListingPayload & {
@@ -114,6 +117,7 @@ type TestMaintenanceRecord = {
   studentId: string;
   landlordId: string;
   issue: string;
+  description?: string;
   priority: 'Low' | 'Medium' | 'High';
   status: 'open' | 'in-progress' | 'resolved';
   createdAt: string;
@@ -126,7 +130,7 @@ type TestLeaseRecord = LandlordLeaseSummary & {
 
 const testListings = new Map<string, TestListingRecord[]>();
 export const testApplications = new Map<string, TestApplicationRecord[]>();
-const testMaintenanceRequests = new Map<string, TestMaintenanceRecord[]>();
+export const testMaintenanceRequests = new Map<string, TestMaintenanceRecord[]>();
 const testLeases = new Map<string, TestLeaseRecord[]>();
 
 export function findTestListing(idOrCode: string): TestListingRecord | undefined {
@@ -224,6 +228,7 @@ const normalizeListing = (row: DbPropertyRow, facilities: string[] = []): Landlo
 
 export interface LandlordRepository {
   getProfile(userId: string): Promise<LandlordProfile | null>;
+  updateProfile(userId: string, payload: { name?: string; phone?: string; companyName?: string }): Promise<LandlordProfile | null>;
   getMyListings(landlordId: string): Promise<LandlordListingPayload[]>;
   createListing(landlordId: string, payload: LandlordListingPayload): Promise<LandlordListingPayload & { id: string; createdAt: string; updatedAt: string }>;
   updateListing(landlordId: string, listingId: string, payload: Partial<LandlordListingPayload>): Promise<LandlordListingPayload & { id: string; createdAt: string; updatedAt: string }>;
@@ -263,6 +268,36 @@ export const landlordRepository: LandlordRepository = {
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
     };
+  },
+
+  async updateProfile(userId: string, payload: { name?: string; phone?: string; companyName?: string }): Promise<LandlordProfile | null> {
+    const landlordId = Number(userId);
+    if (!Number.isFinite(landlordId) || landlordId <= 0) return null;
+
+    if (useFixtures()) {
+      return {
+        id: userId,
+        userId,
+        name: payload.name ?? 'Landlord',
+        email: 'landlord@uiu.ac.bd',
+        phone: payload.phone ?? '+8801700000000',
+        companyName: payload.companyName,
+        propertyCount: 0,
+        isVerified: true,
+      };
+    }
+
+    const updates: string[] = [];
+    const values: (string | number)[] = [];
+    if (payload.name) { updates.push('name = ?'); values.push(payload.name); }
+    if (payload.phone) { updates.push('phone = ?'); values.push(payload.phone); }
+
+    if (updates.length > 0) {
+      values.push(landlordId);
+      await db.execute(`UPDATE users SET ${updates.join(', ')}, updated_at = NOW() WHERE id = ? AND role = 'landlord'`, values);
+    }
+
+    return this.getProfile(userId);
   },
 
   async getMyListings(landlordId: string): Promise<LandlordListingPayload[]> {
@@ -655,17 +690,23 @@ export const landlordRepository: LandlordRepository = {
     const landlordNumericId = Number(landlordId);
     if (!Number.isFinite(landlordNumericId) || landlordNumericId <= 0) return [];
 
-    const [rows] = await db.query<DbMaintenanceRow[]>(`SELECT *
-      FROM maintenance_requests
-      WHERE landlord_id = ?
-      ORDER BY created_at DESC`, [landlordNumericId]);
+    const [rows] = await db.query<DbMaintenanceRow[]>(`SELECT m.*, u.name AS student_name, p.title AS property_title, p.property_code
+      FROM maintenance_requests m
+      JOIN users u ON u.id = m.student_id
+      JOIN properties p ON p.id = m.property_id
+      WHERE m.landlord_id = ?
+      ORDER BY m.created_at DESC`, [landlordNumericId]);
 
     return rows.map((row) => ({
       id: String(row.id),
       propertyId: String(row.property_id),
+      propertyTitle: row.property_title ?? undefined,
+      propertyCode: row.property_code ?? undefined,
       studentId: String(row.student_id),
+      studentName: row.student_name ?? undefined,
       landlordId: String(row.landlord_id),
       issue: row.issue,
+      description: row.description ?? undefined,
       priority: row.priority,
       status: row.status,
       createdAt: row.created_at.toISOString(),

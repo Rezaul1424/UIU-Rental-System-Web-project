@@ -11,6 +11,9 @@ export const landlordService = {
   async getProfile(userId: string): Promise<LandlordProfile | null> {
     return landlordRepository.getProfile(userId);
   },
+  async updateProfile(userId: string, payload: { name?: string; phone?: string; companyName?: string }): Promise<LandlordProfile | null> {
+    return landlordRepository.updateProfile(userId, payload);
+  },
   async getMyListings(landlordId: string): Promise<LandlordListingPayload[]> {
     return landlordRepository.getMyListings(landlordId);
   },

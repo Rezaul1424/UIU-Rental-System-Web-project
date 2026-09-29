@@ -31,11 +31,14 @@ export type StudentProfile = {
   name: string;
   email: string;
   studentId?: string;
+  phone?: string;
   role: 'student' | 'landlord' | 'admin' | 'guest';
   status?: string;
 };
 
 export const getProfile = () => api.get<StudentProfile>('/api/v1/student/profile');
+export const updateProfile = (payload: { name?: string; phone?: string; studentId?: string }) =>
+  api.patch<StudentProfile>('/api/v1/student/profile', payload);
 
 export const getFavorites = async (): Promise<number[]> => {
   const payload = await api.get<Array<any> | { data?: Array<any> }>('/api/v1/student/favorites');
