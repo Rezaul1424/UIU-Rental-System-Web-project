@@ -78,6 +78,15 @@ export type AdminConversation = {
   messages: { id: string; from: 'student' | 'landlord'; senderName: string; text: string; createdAt: string }[]
 }
 
+export type AdminNotification = {
+  id: number
+  title: string
+  message: string
+  type: string
+  isRead: boolean
+  createdAt: string
+}
+
 async function adminRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem('uiu_auth_token')
   if (!token) throw new Error('Please sign in with an administrator account to manage users.')
@@ -225,4 +234,16 @@ export async function fetchAdminConversations(query?: string): Promise<AdminConv
   if (query?.trim()) params.set('q', query.trim())
   const response = await adminRequest<{ data: AdminConversation[] }>(`/conversations${params.size ? `?${params}` : ''}`)
   return response.data
+}
+
+export async function fetchAdminNotifications(): Promise<AdminNotification[]> {
+  const response = await adminRequest<{ data: AdminNotification[] }>('/notifications')
+  return response.data
+}
+
+export async function markAdminNotificationsRead(notificationId?: number): Promise<void> {
+  await adminRequest<void>('/notifications/read', {
+    method: 'PATCH',
+    body: JSON.stringify(notificationId === undefined ? {} : { notificationId }),
+  })
 }

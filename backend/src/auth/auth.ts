@@ -7,6 +7,7 @@ import { z } from 'zod';
 import type { Request, Response, NextFunction } from 'express';
 import { AppError } from '../errors/AppError.js';
 import { recordAuditEvent } from '../security/audit.js';
+import { notifyAdminsAboutPendingLandlord } from '../notifications/admin-repository.js';
 
 export const AuthRoleSchema = z.enum(['admin', 'landlord', 'student', 'guest']);
 export const AuthStatusSchema = z.enum(['active', 'pending', 'suspended', 'deactivated']);
@@ -156,6 +157,7 @@ export async function registerUser(input: {
       resourceId: user.id,
       newState: { role: user.role, status: user.status },
     });
+    if (role === 'landlord') await notifyAdminsAboutPendingLandlord(input.name.trim(), user.id);
     return { user };
   }
 
@@ -183,6 +185,7 @@ export async function registerUser(input: {
     resourceId: user.id,
     newState: { role: user.role, status: user.status },
   });
+  if (role === 'landlord') await notifyAdminsAboutPendingLandlord(input.name.trim(), user.id);
 
   return {
     user: {

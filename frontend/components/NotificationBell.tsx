@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 export type Notification = {
   id: number
@@ -8,12 +8,20 @@ export type Notification = {
   read: boolean
 }
 
-export default function NotificationBell({ notifications }: { notifications: Notification[] }) {
+export default function NotificationBell({ notifications, onMarkRead, onMarkAllRead }: {
+  notifications: Notification[]
+  onMarkRead?: (id: number) => void
+  onMarkAllRead?: () => void
+}) {
   const [open, setOpen] = useState(false)
   const [notifs, setNotifs] = useState<Notification[]>(notifications)
+  useEffect(() => setNotifs(notifications), [notifications])
   const unread = notifs.filter(n => !n.read).length
 
-  const markAllRead = () => setNotifs(ns => ns.map(n => ({ ...n, read: true })))
+  const markAllRead = () => {
+    setNotifs(ns => ns.map(n => ({ ...n, read: true })))
+    onMarkAllRead?.()
+  }
 
   return (
     <div className="relative">
@@ -57,7 +65,10 @@ export default function NotificationBell({ notifications }: { notifications: Not
                 notifs.map(n => (
                   <div
                     key={n.id}
-                    onClick={() => setNotifs(ns => ns.map(x => x.id === n.id ? { ...x, read: true } : x))}
+                    onClick={() => {
+                      setNotifs(ns => ns.map(x => x.id === n.id ? { ...x, read: true } : x))
+                      if (!n.read) onMarkRead?.(n.id)
+                    }}
                     className={`flex items-start gap-3 px-4 py-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors ${!n.read ? 'bg-blue-50/40' : ''}`}
                   >
                     <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${n.read ? 'bg-transparent' : 'bg-blue-500'}`} />

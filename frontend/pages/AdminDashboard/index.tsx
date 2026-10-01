@@ -11,12 +11,14 @@ import {
   fetchAdminCategories,
   fetchAdminConversations,
   fetchAdminListings,
+  fetchAdminNotifications,
   fetchAdminReportData,
   renameAdminCategory,
   replyToAdminComplaint,
   setAdminAccountStatus,
   setAdminListingCategory,
   setAdminListingModerationStatus,
+  markAdminNotificationsRead,
   updateAdminComplaintStatus,
   type AdminAccount,
   type AdminAccountStatus,
@@ -25,11 +27,11 @@ import {
   type AdminConversation,
   type AdminListing,
   type AdminModerationStatus,
+  type AdminNotification,
   type AdminReportData,
 } from '../../api/admin'
 import ListingDetailPage from '../../components/ListingDetail'
 import NotificationBell from '../../components/NotificationBell'
-import { adminNotifs } from './constants'
 import AdminSidebarNav, { type AdminPage } from './Sidebar'
 import OverviewPage from './Overview'
 import LandlordsPage from './Landlords'
@@ -73,6 +75,24 @@ function toStudentRow(account: AdminAccount): StudentRow {
   }
 }
 
+function notificationAge(value: string): string {
+  const minutes = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60_000))
+  if (minutes < 60) return `${minutes} min ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} hr ago`
+  return `${Math.floor(hours / 24)} day${Math.floor(hours / 24) === 1 ? '' : 's'} ago`
+}
+
+function mapAdminNotification(notification: AdminNotification) {
+  return {
+    id: notification.id,
+    text: notification.title,
+    sub: notification.message,
+    time: notificationAge(notification.createdAt),
+    read: notification.isRead,
+  }
+}
+
 export default function AdminDashboard({ userName, onSignOut }: { userName: string; onSignOut: () => void }) {
   const [page, setPage] = useState<AdminPage>('overview')
   const [adminSignOutConfirm, setAdminSignOutConfirm] = useState(false)
@@ -99,6 +119,7 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
   const [categories, setCategories] = useState<AdminCategory[]>([])
   const [adminListings, setAdminListings] = useState<AdminListing[]>([])
   const [newCat, setNewCat] = useState('')
+  const [notifications, setNotifications] = useState<AdminNotification[]>([])
 
   const [adminComplaints, setAdminComplaints] = useState<AdminComplaint[]>([])
   const [selectedComplaint, setSelectedComplaint] = useState<AdminComplaint | null>(null)
@@ -178,6 +199,34 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
       })
     return () => { mounted = false }
   }, [])
+
+  useEffect(() => {
+    let mounted = true
+    fetchAdminNotifications()
+      .then(data => { if (mounted) setNotifications(data) })
+      .catch((error: unknown) => {
+        if (mounted) setAdminError(error instanceof Error ? error.message : 'Could not load notifications.')
+      })
+    return () => { mounted = false }
+  }, [])
+
+  const markNotificationRead = async (id: number) => {
+    setNotifications(items => items.map(item => item.id === id ? { ...item, isRead: true } : item))
+    try {
+      await markAdminNotificationsRead(id)
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : 'Could not mark notification as read.')
+    }
+  }
+
+  const markAllNotificationsRead = async () => {
+    setNotifications(items => items.map(item => ({ ...item, isRead: true })))
+    try {
+      await markAdminNotificationsRead()
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : 'Could not mark notifications as read.')
+    }
+  }
 
   useEffect(() => {
     if (page !== 'reports' && page !== 'overview') return
@@ -396,7 +445,11 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
         )}
 
         <div className="flex justify-end px-6 pt-5">
-          <NotificationBell notifications={adminNotifs} />
+          <NotificationBell
+            notifications={notifications.map(mapAdminNotification)}
+            onMarkRead={markNotificationRead}
+            onMarkAllRead={markAllNotificationsRead}
+          />
         </div>
 
         <div className="px-6 pb-6 max-w-6xl mx-auto space-y-6">
