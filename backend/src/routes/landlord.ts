@@ -123,6 +123,25 @@ router.patch('/maintenance/:requestId/status', asyncHandler(async (req, res) => 
   res.json({ data: result });
 }));
 
+router.get('/maintenance/:requestId/comments', asyncHandler(async (req, res) => {
+  const currentUser = req.user;
+  if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+
+  const requestId = z.string().trim().min(1).parse(req.params.requestId);
+  const comments = await landlordService.getMaintenanceComments(currentUser.id, requestId);
+  res.json({ data: comments });
+}));
+
+router.post('/maintenance/:requestId/comments', asyncHandler(async (req, res) => {
+  const currentUser = req.user;
+  if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+
+  const requestId = z.string().trim().min(1).parse(req.params.requestId);
+  const { message } = z.object({ message: z.string().trim().min(1).max(2000) }).parse(req.body);
+  const comment = await landlordService.addMaintenanceComment(currentUser.id, requestId, message);
+  res.status(201).json({ data: comment });
+}));
+
 router.delete('/listings/:listingId', asyncHandler(async (req, res) => {
   const currentUser = req.user;
   if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');

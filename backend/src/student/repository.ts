@@ -38,6 +38,8 @@ export interface StudentRepository {
   getReceipts(studentId: string): Promise<StudentReceiptSummary[]>;
   getMaintenanceRequests(studentId: string): Promise<StudentMaintenanceRequest[]>;
   submitMaintenanceRequest(studentId: string, payload: Omit<StudentMaintenanceRequest, 'id' | 'status' | 'createdAt' | 'updatedAt'>): Promise<StudentMaintenanceRequest>;
+  getMaintenanceComments(studentId: string, requestId: string): Promise<any[]>;
+  addMaintenanceComment(studentId: string, requestId: string, message: string): Promise<any>;
   updateProfile(userId: string, payload: { name?: string; phone?: string; studentId?: string }): Promise<StudentProfile | null>;
   payRentObligation(studentId: string, obligationId: string, method?: string): Promise<{ receiptNumber: string; paidAt: string }>;
   getReviews(studentId: string): Promise<any[]>;
@@ -642,6 +644,80 @@ export const studentRepository: StudentRepository = {
       attachments: payload.attachments,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+    };
+  },
+
+  async getMaintenanceComments(studentId: string, requestId: string): Promise<any[]> {
+    const studentNumericId = Number(studentId);
+    const numericRequestId = Number(requestId);
+    if (!Number.isFinite(studentNumericId) || !Number.isFinite(numericRequestId)) return [];
+
+    if (useFixtures()) return [];
+
+    // Verify student owns this request
+    const [existing] = await db.query<RowDataPacket[]>(
+      'SELECT id FROM maintenance_requests WHERE id = ? AND student_id = ? LIMIT 1',
+      [numericRequestId, studentNumericId],
+    );
+    if (!existing[0]) return [];
+
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT mc.id, mc.maintenance_request_id, mc.author_id, mc.message, mc.created_at,
+              u.name AS author_name, u.role AS author_role
+       FROM maintenance_comments mc
+       JOIN users u ON u.id = mc.author_id
+       WHERE mc.maintenance_request_id = ?
+       ORDER BY mc.created_at ASC`,
+      [numericRequestId],
+    );
+
+    return rows.map((row) => ({
+      id: Number(row.id),
+      requestId: String(row.maintenance_request_id),
+      authorId: String(row.author_id),
+      authorName: row.author_name || 'Unknown',
+      from: row.author_role === 'landlord' ? 'landlord' : 'student',
+      text: row.message,
+      date: new Date(row.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+      createdAt: row.created_at.toISOString(),
+    }));
+  },
+
+  async addMaintenanceComment(studentId: string, requestId: string, message: string): Promise<any> {
+    const studentNumericId = Number(studentId);
+    const numericRequestId = Number(requestId);
+    if (!Number.isFinite(studentNumericId) || !Number.isFinite(numericRequestId)) {
+      throw new AppError(400, 'INVALID_IDS', 'Invalid IDs');
+    }
+
+    if (useFixtures()) {
+      return { id: Date.now(), requestId, authorId: studentId, from: 'student', text: message, date: 'Now', createdAt: new Date().toISOString() };
+    }
+
+    // Verify student owns this request
+    const [existing] = await db.query<RowDataPacket[]>(
+      'SELECT id FROM maintenance_requests WHERE id = ? AND student_id = ? LIMIT 1',
+      [numericRequestId, studentNumericId],
+    );
+    if (!existing[0]) throw new AppError(403, 'FORBIDDEN', 'You do not own this maintenance request');
+
+    const [result] = await db.execute(
+      'INSERT INTO maintenance_comments (maintenance_request_id, author_id, message) VALUES (?, ?, ?)',
+      [numericRequestId, studentNumericId, message],
+    );
+    const insertId = Number((result as { insertId?: number }).insertId ?? 0);
+
+    const [authorRows] = await db.query<RowDataPacket[]>('SELECT name FROM users WHERE id = ? LIMIT 1', [studentNumericId]);
+    const createdAt = new Date();
+    return {
+      id: insertId,
+      requestId,
+      authorId: studentId,
+      authorName: authorRows[0]?.name || 'Student',
+      from: 'student',
+      text: message,
+      date: createdAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+      createdAt: createdAt.toISOString(),
     };
   },
 

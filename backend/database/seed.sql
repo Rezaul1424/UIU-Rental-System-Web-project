@@ -43,7 +43,7 @@ VALUES ('INV-DEV-2026-08', 4, 5, 2, '2026-08', 5000.00, 'pending')
 ON DUPLICATE KEY UPDATE `status` = VALUES(`status`), `amount` = VALUES(`amount`);
 
 INSERT INTO `reviews` (`property_id`, `student_id`, `landlord_id`, `landlord_stars`, `property_stars`, `comment`)
-SELECT 4, 5, 2, 5, 4, 'Development fixture review.'
+SELECT 4, 5, 2, 5, 4, 'Spacious unit with prompt landlord communication. Highly recommended for UIU students.'
 WHERE NOT EXISTS (SELECT 1 FROM `reviews` WHERE `property_id` = 4 AND `student_id` = 5);
 
 INSERT INTO `conversations` (`student_id`, `landlord_id`, `property_id`)

@@ -192,6 +192,25 @@ router.post('/maintenance', asyncHandler(async (req, res) => {
   res.status(201).json({ data: request });
 }));
 
+router.get('/maintenance/:requestId/comments', asyncHandler(async (req, res) => {
+  const currentUser = req.user;
+  if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+
+  const requestId = z.string().trim().min(1).parse(req.params.requestId);
+  const comments = await studentService.getMaintenanceComments(currentUser.id, requestId);
+  res.json({ data: comments });
+}));
+
+router.post('/maintenance/:requestId/comments', asyncHandler(async (req, res) => {
+  const currentUser = req.user;
+  if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+
+  const requestId = z.string().trim().min(1).parse(req.params.requestId);
+  const { message } = z.object({ message: z.string().trim().min(1).max(2000) }).parse(req.body);
+  const comment = await studentService.addMaintenanceComment(currentUser.id, requestId, message);
+  res.status(201).json({ data: comment });
+}));
+
 const reviewPayloadSchema = z.object({
   propertyId: z.string().trim().min(1),
   landlordId: z.string().trim().min(1).optional(),

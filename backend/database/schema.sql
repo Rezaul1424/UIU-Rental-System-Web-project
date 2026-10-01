@@ -20,6 +20,7 @@ DROP TABLE IF EXISTS `chat_messages`;
 DROP TABLE IF EXISTS `conversations`;
 DROP TABLE IF EXISTS `favorites`;
 DROP TABLE IF EXISTS `reviews`;
+DROP TABLE IF EXISTS `maintenance_comments`;
 DROP TABLE IF EXISTS `maintenance_requests`;
 DROP TABLE IF EXISTS `rent_payments`;
 DROP TABLE IF EXISTS `applications`;
@@ -212,6 +213,22 @@ CREATE TABLE `maintenance_requests` (
   INDEX `idx_maint_status` (`status`),
   INDEX `idx_maint_priority` (`priority`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `maintenance_comments` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `maintenance_request_id` INT NOT NULL,
+  `author_id` INT NOT NULL,
+  `message` TEXT NOT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT `fk_maint_comments_request`
+    FOREIGN KEY (`maintenance_request_id`) REFERENCES `maintenance_requests` (`id`)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_maint_comments_author`
+    FOREIGN KEY (`author_id`) REFERENCES `users` (`id`)
+    ON DELETE RESTRICT ON UPDATE CASCADE,
+  INDEX `idx_maint_comments_req_created` (`maintenance_request_id`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 
 -- ------------------------------------------------------------------------------
 -- 8. REVIEWS & RATINGS TABLE

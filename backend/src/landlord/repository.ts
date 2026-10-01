@@ -244,6 +244,8 @@ export interface LandlordRepository {
   getLeases(landlordId: string): Promise<LandlordLeaseSummary[]>;
   getMaintenanceRequests(landlordId: string): Promise<Array<{ id: string; propertyId: string; studentId: string; landlordId: string; issue: string; priority: 'Low' | 'Medium' | 'High'; status: 'open' | 'in-progress' | 'resolved'; createdAt: string }>>;
   updateMaintenanceStatus(landlordId: string, requestId: string, payload: MaintenanceUpdatePayload): Promise<{ id: string; status: 'open' | 'in-progress' | 'resolved'; updatedAt: string }>;
+  getMaintenanceComments(landlordId: string, requestId: string): Promise<any[]>;
+  addMaintenanceComment(landlordId: string, requestId: string, message: string, role: 'landlord' | 'student'): Promise<any>;
   getComplaints(landlordId: string): Promise<any[]>;
   submitComplaint(landlordId: string, payload: { against?: string; property?: string; propertyId?: string; category: string; subject: string; description: string }): Promise<any>;
 }
@@ -748,6 +750,81 @@ export const landlordRepository: LandlordRepository = {
     await db.execute('UPDATE maintenance_requests SET status = ?, updated_at = NOW() WHERE id = ? AND landlord_id = ?', [status, numericRequestId, landlordNumericId]);
     return { id: String(numericRequestId), status, updatedAt: new Date().toISOString() };
   },
+
+  async getMaintenanceComments(landlordId: string, requestId: string): Promise<any[]> {
+    const landlordNumericId = Number(landlordId);
+    const numericRequestId = Number(requestId);
+    if (!Number.isFinite(landlordNumericId) || !Number.isFinite(numericRequestId)) return [];
+
+    if (useFixtures()) return [];
+
+    // Verify landlord owns this request
+    const [existing] = await db.query<RowDataPacket[]>(
+      'SELECT id FROM maintenance_requests WHERE id = ? AND landlord_id = ? LIMIT 1',
+      [numericRequestId, landlordNumericId],
+    );
+    if (!existing[0]) return [];
+
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT mc.id, mc.maintenance_request_id, mc.author_id, mc.message, mc.created_at,
+              u.name AS author_name, u.role AS author_role
+       FROM maintenance_comments mc
+       JOIN users u ON u.id = mc.author_id
+       WHERE mc.maintenance_request_id = ?
+       ORDER BY mc.created_at ASC`,
+      [numericRequestId],
+    );
+
+    return rows.map((row) => ({
+      id: Number(row.id),
+      requestId: String(row.maintenance_request_id),
+      authorId: String(row.author_id),
+      authorName: row.author_name || 'Unknown',
+      from: row.author_role === 'landlord' ? 'landlord' : 'tenant',
+      text: row.message,
+      date: new Date(row.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+      createdAt: row.created_at.toISOString(),
+    }));
+  },
+
+  async addMaintenanceComment(landlordId: string, requestId: string, message: string, role: 'landlord' | 'student'): Promise<any> {
+    const landlordNumericId = Number(landlordId);
+    const numericRequestId = Number(requestId);
+    if (!Number.isFinite(landlordNumericId) || !Number.isFinite(numericRequestId)) {
+      throw new AppError(400, 'INVALID_IDS', 'Invalid IDs');
+    }
+
+    if (useFixtures()) {
+      return { id: Date.now(), requestId, authorId: landlordId, from: role, text: message, date: 'Now', createdAt: new Date().toISOString() };
+    }
+
+    // Verify landlord owns this request
+    const [existing] = await db.query<RowDataPacket[]>(
+      'SELECT id FROM maintenance_requests WHERE id = ? AND landlord_id = ? LIMIT 1',
+      [numericRequestId, landlordNumericId],
+    );
+    if (!existing[0]) throw new AppError(403, 'FORBIDDEN', 'You do not own this maintenance request');
+
+    const [result] = await db.execute(
+      'INSERT INTO maintenance_comments (maintenance_request_id, author_id, message) VALUES (?, ?, ?)',
+      [numericRequestId, landlordNumericId, message],
+    );
+    const insertId = Number((result as { insertId?: number }).insertId ?? 0);
+
+    const [authorRows] = await db.query<RowDataPacket[]>('SELECT name FROM users WHERE id = ? LIMIT 1', [landlordNumericId]);
+    const createdAt = new Date();
+    return {
+      id: insertId,
+      requestId,
+      authorId: landlordId,
+      authorName: authorRows[0]?.name || 'Landlord',
+      from: 'landlord',
+      text: message,
+      date: createdAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+      createdAt: createdAt.toISOString(),
+    };
+  },
+
 
   async getComplaints(landlordId: string): Promise<any[]> {
     if (useFixtures()) {

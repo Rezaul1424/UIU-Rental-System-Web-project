@@ -3,7 +3,7 @@ import type { Listing } from '../../types'
 import { listings } from '../../data'
 import ListingDetailPage from '../../components/ListingDetail'
 import NotificationBell from '../../components/NotificationBell'
-import { createListing, deleteListing, getApplications, getLeases, getLandlordComplaints, getMaintenanceRequests, getMyListings, getProfile, reviewApplication, submitLandlordComplaint as submitLandlordComplaintApi, updateListing, updateMaintenanceStatus, updateProfile as updateLandlordProfile } from '../../lib/landlordApi'
+import { addLandlordMaintenanceComment, createListing, deleteListing, getApplications, getLeases, getLandlordComplaints, getLandlordMaintenanceComments, getMaintenanceRequests, getMyListings, getProfile, reviewApplication, submitLandlordComplaint as submitLandlordComplaintApi, updateListing, updateMaintenanceStatus, updateProfile as updateLandlordProfile } from '../../lib/landlordApi'
 import { landlordNotifs } from './constants'
 import LandlordSidebarNav, { type LandlordPage } from './Sidebar'
 import type { MaintReq, RequestItem, ChatMsg, MaintStage } from './types'
@@ -463,14 +463,39 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
     }
   }
 
-  const addComment = (id: number) => {
+  const addComment = async (id: number) => {
     const text = newComment[id]?.trim()
     if (!text) return
+    // Optimistic update
     setMReqs(ms => ms.map(m => m.id === id
       ? { ...m, comments: [...m.comments, { from: 'landlord', text, date: 'Now' }] }
       : m
     ))
     setNewComment(nc => ({ ...nc, [id]: '' }))
+    try {
+      await addLandlordMaintenanceComment(id, text)
+    } catch (err) {
+      console.error('Failed to send maintenance comment:', err)
+    }
+  }
+
+  const loadLandlordMaintComments = async (id: number) => {
+    try {
+      const comments = await getLandlordMaintenanceComments(id)
+      setMReqs(ms => ms.map(m => m.id === id
+        ? {
+            ...m,
+            comments: comments.map((c: any) => ({
+              from: (c.from === 'landlord' ? 'landlord' : 'tenant') as 'landlord' | 'tenant',
+              text: c.text ?? c.message ?? '',
+              date: c.date ?? 'N/A',
+            })),
+          }
+        : m
+      ))
+    } catch (err) {
+      console.error('Failed to load maintenance comments:', err)
+    }
   }
 
 
@@ -825,7 +850,10 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
             <MaintenancePage
               mReqs={mReqs}
               expandedMaintId={expandedMaintId}
-              setExpandedMaintId={setExpandedMaintId}
+              setExpandedMaintId={(id) => {
+                setExpandedMaintId(id)
+                if (id !== null) loadLandlordMaintComments(id)
+              }}
               advanceStage={advanceStage}
               revertStage={revertStage}
               addComment={addComment}

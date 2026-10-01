@@ -1,8 +1,8 @@
-import React from 'react'
-import { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import type { Listing } from '../types'
 import { Badge } from './ui'
 import { CampusMap } from './Map'
+import { api } from '../lib/api'
 
 export const listingDescriptions: Record<number, string> = {
   1: 'A cosy, self-contained studio unit just a 4-minute walk from UIU Gate 3. The flat features a private bathroom, a kitchenette with gas cooker, and reliable AC. Natural light from east-facing windows makes the space feel open. Ideal for a single student who values privacy and proximity to campus.',
@@ -29,6 +29,8 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
 }) {
   const [carouselIdx, setCarouselIdx] = useState(0)
   const [showReviewsModal, setShowReviewsModal] = useState(false)
+  const [fetchedReviews, setFetchedReviews] = useState<Array<{ name: string; stars: number; comment: string; date: string; property: string }>>([])
+
   const rawPin = listing.mapPin ?? listingPins[listing.id] ?? { x: 50, y: 50 }
   const pin = {
     x: Number.isFinite(Number(rawPin?.x)) ? Number(rawPin.x) : 50,
@@ -46,6 +48,36 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
     { name: 'Sadia Islam', stars: 5, comment: 'Excellent condition, felt like home immediately. Highly recommend.', date: 'Apr 2026', property: listing.title || 'UIU Rental' },
     { name: 'Rifat Hassan', stars: 3, comment: 'Average experience. Some maintenance issues took a while to resolve.', date: 'Feb 2026', property: listing.title || 'UIU Rental' },
   ]
+
+  useEffect(() => {
+    let active = true
+    const propId = listing.propertyId || listing.id
+    if (!propId) return
+
+    api.get<Array<any> | { data?: Array<any> }>(`/api/v1/listings/${propId}/reviews`)
+      .then(res => {
+        if (!active) return
+        const list = Array.isArray(res) ? res : Array.isArray((res as any)?.data) ? (res as any).data : []
+        if (list.length > 0) {
+          setFetchedReviews(list.map((r: any) => ({
+            name: r.studentName || r.name || 'UIU Student',
+            stars: Number(r.propertyStars || r.landlordStars || 5),
+            comment: r.comment || r.text || '',
+            date: r.date || (r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : 'Recent'),
+            property: r.property || listing.title || 'UIU Rental',
+          })))
+        }
+      })
+      .catch(() => {})
+
+    return () => { active = false }
+  }, [listing.id, listing.propertyId])
+
+  const activeReviews = fetchedReviews.length > 0 ? fetchedReviews : sampleReviews
+  const avgRating = fetchedReviews.length > 0
+    ? (fetchedReviews.reduce((sum, r) => sum + r.stars, 0) / fetchedReviews.length).toFixed(1)
+    : (listing.rating ? Number(listing.rating).toFixed(1) : '4.5')
+  const totalReviewsCount = fetchedReviews.length > 0 ? fetchedReviews.length : (listing.rating ? 12 : sampleReviews.length)
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
@@ -207,8 +239,8 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
                 <div className="text-xs text-gray-500">Verified · Since 2022</div>
               </div>
             </div>
-            <div className="flex gap-0.5 mb-1">{[1,2,3,4,5].map(s => <span key={s} className={`text-sm ${s <= 4 ? 'text-amber-400' : 'text-gray-200'}`}>★</span>)}</div>
-            <div className="text-xs text-gray-500 mb-3">4.0 · 12 reviews</div>
+            <div className="flex gap-0.5 mb-1">{[1,2,3,4,5].map(s => <span key={s} className={`text-sm ${s <= Math.round(Number(avgRating)) ? 'text-amber-400' : 'text-gray-200'}`}>★</span>)}</div>
+            <div className="text-xs text-gray-500 mb-3">{avgRating} · {totalReviewsCount} {totalReviewsCount === 1 ? 'review' : 'reviews'}</div>
             <button
               onClick={() => setShowReviewsModal(true)}
               className="w-full text-xs font-semibold text-[#1a1a18] border border-gray-200 py-2 rounded-xl hover:bg-gray-50 transition-colors"
@@ -258,18 +290,18 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
             </div>
             {/* Overall */}
             <div className="flex items-center gap-3 bg-amber-50 rounded-xl p-3 mb-4">
-              <div className="text-3xl font-bold text-amber-500">4.0</div>
+              <div className="text-3xl font-bold text-amber-500">{avgRating}</div>
               <div>
-                <div className="flex gap-0.5">{[1,2,3,4,5].map(s => <span key={s} className={`text-sm ${s <= 4 ? 'text-amber-400' : 'text-gray-200'}`}>★</span>)}</div>
-                <div className="text-xs text-gray-500 mt-0.5">Overall landlord rating · 12 reviews</div>
+                <div className="flex gap-0.5">{[1,2,3,4,5].map(s => <span key={s} className={`text-sm ${s <= Math.round(Number(avgRating)) ? 'text-amber-400' : 'text-gray-200'}`}>★</span>)}</div>
+                <div className="text-xs text-gray-500 mt-0.5">Overall rating · {totalReviewsCount} {totalReviewsCount === 1 ? 'review' : 'reviews'}</div>
               </div>
             </div>
             <div className="overflow-y-auto space-y-3 flex-1">
-              {sampleReviews.map((r, i) => (
+              {activeReviews.map((r, i) => (
                 <div key={i} className="border border-gray-100 rounded-xl p-4">
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-[#111827] text-white text-xs font-bold flex items-center justify-center">{r.name[0]}</div>
+                      <div className="w-7 h-7 rounded-full bg-[#111827] text-white text-xs font-bold flex items-center justify-center">{(r.name || 'U')[0]}</div>
                       <span className="text-sm font-semibold text-[#1a1a18]">{r.name}</span>
                     </div>
                     <span className="text-xs text-gray-400">{r.date}</span>

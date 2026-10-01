@@ -134,25 +134,26 @@ export default function AuthModal({ mode, onClose, onAuth }: { mode: 'login' | '
 
         {/* Body */}
         <form onSubmit={handleSubmit} className="px-8 py-6 space-y-4">
-          {/* Role picker */}
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-2">I am a</label>
-            <div className="grid grid-cols-3 gap-2">
-              {roleOptions.map(r => (
-                <button
-                  key={r.id}
-                  type="button"
-                  onClick={() => setRole(r.id)}
-                  className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 text-xs font-medium transition-all ${
-                    role === r.id ? 'border-[#1a1a18] bg-gray-100 text-[#1a1a18]' : 'border-gray-200 text-gray-500 hover:border-[#1a1a18]/40'
-                  }`}
-                >
-                  <span className="text-xl">{r.icon}</span>
-                  {r.label}
-                </button>
-              ))}
+          {tab === 'signup' && (
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-2">I am a</label>
+              <div className="grid grid-cols-3 gap-2">
+                {roleOptions.map(r => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => setRole(r.id)}
+                    className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 text-xs font-medium transition-all ${
+                      role === r.id ? 'border-[#1a1a18] bg-gray-100 text-[#1a1a18]' : 'border-gray-200 text-gray-500 hover:border-[#1a1a18]/40'
+                    }`}
+                  >
+                    <span className="text-xl">{r.icon}</span>
+                    {r.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {tab === 'signup' && (
             <div>

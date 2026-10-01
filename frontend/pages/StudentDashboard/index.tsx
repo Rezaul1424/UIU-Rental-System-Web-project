@@ -3,7 +3,7 @@ import type { Listing } from '../../types'
 import { listings } from '../../data'
 import { Badge } from '../../components/ui'
 import NotificationBell from '../../components/NotificationBell'
-import { addFavorite, cancelApplication as cancelStudentApplication, fetchPublicListings, getApplications, getFavorites, getLeases, getMaintenanceRequests, getProfile, getReceipts, getRentSummary, getStudentComplaints, getStudentReviews, payRent, removeFavorite, submitApplication as submitStudentApplication, submitMaintenanceRequest, submitStudentComplaint, submitStudentReview, updateProfile as updateStudentProfile, type StudentApplication } from '../../lib/studentApi'
+import { addFavorite, addMaintenanceComment, cancelApplication as cancelStudentApplication, fetchPublicListings, getApplications, getFavorites, getLeases, getMaintenanceComments, getMaintenanceRequests, getProfile, getReceipts, getRentSummary, getStudentComplaints, getStudentReviews, payRent, removeFavorite, submitApplication as submitStudentApplication, submitMaintenanceRequest, submitStudentComplaint, submitStudentReview, updateProfile as updateStudentProfile, type StudentApplication } from '../../lib/studentApi'
 import { studentNotifs } from './constants'
 import StudentSidebarNav from './Sidebar'
 import OverviewPage from './pages/OverviewPage'
@@ -77,16 +77,16 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
           status: request.status,
           date: request.createdAt ? new Date(request.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A',
         })) : [])
-        if (Array.isArray(reviewsResult) && reviewsResult.length > 0) {
-          setReviewHistory(reviewsResult.map((r: { id?: number; landlordName?: string; propertyTitle?: string; propertyId?: number; landlordStars?: number; propertyStars?: number; comment?: string; createdAt?: string }) => ({
-            id: r.id ?? Date.now(),
-            landlord: r.landlordName ?? '',
-            property: r.propertyTitle ?? '',
-            listingId: r.propertyId ?? 0,
-            landlordStars: r.landlordStars ?? 0,
-            propStars: r.propertyStars ?? 0,
-            text: r.comment ?? '',
-            date: r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '',
+        if (Array.isArray(reviewsResult)) {
+          setReviewHistory(reviewsResult.map((r: any) => ({
+            id: Number(r.id ?? Date.now()),
+            landlord: r.landlord || r.landlordName || 'Landlord',
+            property: r.property || r.propertyTitle || 'Property',
+            listingId: Number(r.propertyId ?? r.listingId ?? 0),
+            landlordStars: Number(r.landlordStars ?? 0),
+            propStars: Number(r.propStars ?? r.propertyStars ?? 0),
+            text: r.text || r.comment || '',
+            date: r.date || (r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''),
           })))
         }
         if (Array.isArray(complaintsResult) && complaintsResult.length > 0) {
@@ -371,7 +371,8 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
   // ── Reviews ──────────────────────────────────────────────────────────────────
   // Landlords the student can review: current + any previously applied
   const reviewableLandlords = useMemo(() => {
-    const derived = listings
+    const sourceListings = allListings.length > 0 ? allListings : listings
+    const derived = sourceListings
       .filter((listing) => listing.landlord && listing.title)
       .map((listing) => ({
         landlord: listing.landlord,
@@ -385,7 +386,7 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
       { landlord: 'Rahman Faruk', property: 'Studio near Gate 3', listingId: 1 },
       { landlord: 'Nusrat Jahan', property: 'Shared Mess – South Campus', listingId: 2 },
     ]
-  }, [])
+  }, [allListings])
 
   const [reviewTarget, setReviewTarget] = useState(reviewableLandlords[0])
   useEffect(() => {
@@ -397,31 +398,34 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
   const [landlordStars, setLandlordStars] = useState(0)
   const [propStars, setPropStars] = useState(0)
   const [reviewText, setReviewText] = useState('')
-  const [reviewHistory, setReviewHistory] = useState<Review[]>([
-    { id: 1, landlord: 'Nusrat Jahan', property: 'Shared Mess – South Campus', listingId: 2, landlordStars: 4, propStars: 3, text: 'Good facilities overall, but the common area could be cleaner. Landlord is responsive and polite.', date: '15 Jun 2026' },
-  ])
+  const [reviewHistory, setReviewHistory] = useState<Review[]>([])
   const submitReview = async () => {
-    if (landlordStars === 0 || propStars === 0) return
+    const calculatedPropStars = Math.min(5, Math.max(1, Math.round((questionAnswers[0] + questionAnswers[3] + questionAnswers[4]) / 3))) || 5
+    const calculatedLandlordStars = Math.min(5, Math.max(1, Math.round((questionAnswers[1] + questionAnswers[2]) / 2))) || 5
+    if (!reviewText.trim()) return
+
     const optimistic: Review = {
       id: Date.now(),
       landlord: reviewTarget.landlord,
       property: reviewTarget.property,
       listingId: reviewTarget.listingId,
-      landlordStars,
-      propStars,
+      landlordStars: calculatedLandlordStars,
+      propStars: calculatedPropStars,
       text: reviewText,
       date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
     }
-    setReviewHistory(h => [...h, optimistic])
+    setReviewHistory(h => [optimistic, ...h.filter(r => r.listingId !== reviewTarget.listingId)])
     setLandlordStars(0)
     setPropStars(0)
+    setQuestionAnswers([0, 0, 0, 0, 0])
+    setWouldRecommend('')
     setReviewText('')
     setPage('review-history')
     try {
       await submitStudentReview({
         propertyId: String(reviewTarget.listingId),
-        landlordStars,
-        propertyStars: propStars,
+        landlordStars: calculatedLandlordStars,
+        propertyStars: calculatedPropStars,
         comment: reviewText,
       })
     } catch (err) {
@@ -525,20 +529,35 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
       console.error('Failed to submit complaint to backend:', err)
     }
   }
-  // Maintenance chat (per request)
-  const [maintChatThreads, setMaintChatThreads] = useState<Record<number, {from:'student'|'landlord';text:string}[]>>({
-    1: [{ from: 'landlord', text: 'We have assigned a technician. They will visit on Friday.' }, { from: 'student', text: 'Thank you, I\'ll be available from 2pm.' }],
-    2: [{ from: 'landlord', text: 'Issue resolved. AC serviced and refilled.' }],
-  })
+  // Maintenance chat (per request) — backed by maintenance_comments API
+  const [maintChatThreads, setMaintChatThreads] = useState<Record<number, {from:'student'|'landlord';text:string}[]>>({})
   const [maintChatInput, setMaintChatInput] = useState<Record<number,string>>({})
-  const sendMaintChat = (reqId: number) => {
+  const sendMaintChat = async (reqId: number) => {
     const text = (maintChatInput[reqId] ?? '').trim()
     if (!text) return
+    // Optimistic update
     setMaintChatThreads(t => ({ ...t, [reqId]: [...(t[reqId]??[]), { from: 'student', text }] }))
     setMaintChatInput(c => ({ ...c, [reqId]: '' }))
-    setTimeout(() => {
-      setMaintChatThreads(t => ({ ...t, [reqId]: [...(t[reqId]??[]), { from: 'landlord', text: "Got it, I'll look into this right away." }] }))
-    }, 900)
+    try {
+      await addMaintenanceComment(reqId, text)
+    } catch (err) {
+      console.error('Failed to send maintenance comment:', err)
+    }
+  }
+  // Load comments when a request is expanded
+  const loadMaintComments = async (reqId: number) => {
+    try {
+      const comments = await getMaintenanceComments(reqId)
+      setMaintChatThreads(t => ({
+        ...t,
+        [reqId]: comments.map((c: any) => ({
+          from: (c.from === 'landlord' ? 'landlord' : 'student') as 'student' | 'landlord',
+          text: c.text ?? c.message ?? '',
+        })),
+      }))
+    } catch (err) {
+      console.error('Failed to load maintenance comments:', err)
+    }
   }
 
   useEffect(() => {
@@ -741,7 +760,10 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
               setNewReq={setNewReq}
               submitRequest={submitRequest}
               expandedMaintId={expandedMaintId}
-              setExpandedMaintId={setExpandedMaintId}
+              setExpandedMaintId={(id) => {
+                setExpandedMaintId(id)
+                if (id !== null) loadMaintComments(id)
+              }}
               maintChatThreads={maintChatThreads}
               maintChatInput={maintChatInput}
               setMaintChatInput={setMaintChatInput}

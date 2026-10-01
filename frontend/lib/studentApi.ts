@@ -369,4 +369,12 @@ export const submitStudentComplaint = async (payload: {
   return api.post('/api/v1/student/complaints', payload);
 };
 
+export const getMaintenanceComments = async (requestId: string | number) => {
+  const payload = await api.get<Array<any> | { data?: Array<any> }>(`/api/v1/student/maintenance/${requestId}/comments`);
+  return Array.isArray(payload) ? payload : Array.isArray((payload as any)?.data) ? (payload as any).data : [];
+};
 
+export const addMaintenanceComment = async (requestId: string | number, message: string) => {
+  const payload = await api.post<{ data?: any }>(`/api/v1/student/maintenance/${requestId}/comments`, { message });
+  return (payload as any)?.data ?? payload;
+};

@@ -205,3 +205,12 @@ export const submitLandlordComplaint = async (payload: {
   return api.post('/api/v1/landlord/complaints', payload);
 };
 
+export const getLandlordMaintenanceComments = async (requestId: string | number) => {
+  const payload = await api.get<Array<any> | { data?: Array<any> }>(`/api/v1/landlord/maintenance/${requestId}/comments`);
+  return Array.isArray(payload) ? payload : Array.isArray((payload as any)?.data) ? (payload as any).data : [];
+};
+
+export const addLandlordMaintenanceComment = async (requestId: string | number, message: string) => {
+  const payload = await api.post<{ data?: any }>(`/api/v1/landlord/maintenance/${requestId}/comments`, { message });
+  return (payload as any)?.data ?? payload;
+};
