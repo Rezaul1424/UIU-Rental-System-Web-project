@@ -348,6 +348,30 @@ CREATE TABLE `notifications` (
   INDEX `idx_notif_user_read` (`user_id`, `is_read`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ------------------------------------------------------------------------------
+-- 13. AUTH SESSIONS & PASSWORD RESET TOKENS
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `auth_sessions` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `user_id` INT NOT NULL,
+  `token_hash` VARCHAR(64) NOT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `expires_at` TIMESTAMP NOT NULL,
+  `revoked_at` TIMESTAMP NULL DEFAULT NULL,
+  INDEX `idx_sessions_token_hash` (`token_hash`),
+  INDEX `idx_sessions_user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `password_reset_tokens` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT NOT NULL,
+  `token_hash` VARCHAR(64) NOT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `expires_at` TIMESTAMP NOT NULL,
+  `used_at` TIMESTAMP NULL DEFAULT NULL,
+  INDEX `idx_reset_token_hash` (`token_hash`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ==============================================================================
 -- INITIAL SEED DATA (Matching UIU vicinity landmarks & Frontend Prototype)
 -- ==============================================================================
@@ -368,13 +392,13 @@ ON DUPLICATE KEY UPDATE `name`=VALUES(`name`);
 -- 2. Seed Users
 -- Passwords below are hashed for 'password123' via bcrypt
 INSERT INTO `users` (`id`, `role`, `name`, `email`, `password_hash`, `phone`, `student_id`, `department`, `status`, `is_verified`) VALUES
-  (1, 'admin', 'Admin User', 'admin@uiu.ac.bd', '$2a$10$f6f.vGvXhY1lX8LwH2eQkOG1N42i5T10d18.M96wZc.12h4q2wK1G', '+8801700000001', NULL, 'Administration', 'active', TRUE),
-  (2, 'landlord', 'Rahman Faruk', 'faruk@example.com', '$2a$10$f6f.vGvXhY1lX8LwH2eQkOG1N42i5T10d18.M96wZc.12h4q2wK1G', '+8801711122233', NULL, NULL, 'active', TRUE),
-  (3, 'landlord', 'Nusrat Jahan', 'nusrat@example.com', '$2a$10$f6f.vGvXhY1lX8LwH2eQkOG1N42i5T10d18.M96wZc.12h4q2wK1G', '+8801711122234', NULL, NULL, 'active', TRUE),
-  (4, 'landlord', 'Karim Abdullah', 'karim@example.com', '$2a$10$f6f.vGvXhY1lX8LwH2eQkOG1N42i5T10d18.M96wZc.12h4q2wK1G', '+8801711122235', NULL, NULL, 'active', TRUE),
-  (5, 'student', 'Tanvir Ahmed', 'tanvir@uiu.ac.bd', '$2a$10$f6f.vGvXhY1lX8LwH2eQkOG1N42i5T10d18.M96wZc.12h4q2wK1G', '+8801811223344', '011211001', 'CSE', 'active', TRUE),
-  (6, 'student', 'Sadia Islam', 'sadia@uiu.ac.bd', '$2a$10$f6f.vGvXhY1lX8LwH2eQkOG1N42i5T10d18.M96wZc.12h4q2wK1G', '+8801811223345', '011211002', 'BBA', 'active', TRUE)
-ON DUPLICATE KEY UPDATE `email`=VALUES(`email`);
+  (1, 'admin', 'Admin User', 'admin@uiu.ac.bd', '$2a$10$VN.WRhR7GXsWZ7QgmzemJO9xgw35Q9nuUSSLVjZfjBpA/nuMByoSi', '+8801700000001', NULL, 'Administration', 'active', TRUE),
+  (2, 'landlord', 'Rahman Faruk', 'faruk@example.com', '$2a$10$VN.WRhR7GXsWZ7QgmzemJO9xgw35Q9nuUSSLVjZfjBpA/nuMByoSi', '+8801711122233', NULL, NULL, 'active', TRUE),
+  (3, 'landlord', 'Nusrat Jahan', 'nusrat@example.com', '$2a$10$VN.WRhR7GXsWZ7QgmzemJO9xgw35Q9nuUSSLVjZfjBpA/nuMByoSi', '+8801711122234', NULL, NULL, 'active', TRUE),
+  (4, 'landlord', 'Karim Abdullah', 'karim@example.com', '$2a$10$VN.WRhR7GXsWZ7QgmzemJO9xgw35Q9nuUSSLVjZfjBpA/nuMByoSi', '+8801711122235', NULL, NULL, 'active', TRUE),
+  (5, 'student', 'Tanvir Ahmed', 'tanvir@uiu.ac.bd', '$2a$10$VN.WRhR7GXsWZ7QgmzemJO9xgw35Q9nuUSSLVjZfjBpA/nuMByoSi', '+8801811223344', '011211001', 'CSE', 'active', TRUE),
+  (6, 'student', 'Sadia Islam', 'sadia@uiu.ac.bd', '$2a$10$VN.WRhR7GXsWZ7QgmzemJO9xgw35Q9nuUSSLVjZfjBpA/nuMByoSi', '+8801811223345', '011211002', 'BBA', 'active', TRUE)
+ON DUPLICATE KEY UPDATE `email`=VALUES(`email`), `password_hash`=VALUES(`password_hash`);
 
 -- 3. Seed Properties
 INSERT INTO `properties` (`id`, `property_code`, `landlord_id`, `title`, `description`, `type`, `price`, `distance_km`, `status`, `total_size_sqft`, `roommate_capacity`, `parking`, `bedroom_count`, `living_count`, `bathroom_count`, `kitchen_count`, `veranda_count`, `room_sizes_json`, `address_street`, `address_area`, `map_pin_x`, `map_pin_y`) VALUES
