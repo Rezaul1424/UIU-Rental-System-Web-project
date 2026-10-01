@@ -2,7 +2,22 @@ import { useEffect, useState } from 'react'
 import type { Listing } from '../../types'
 import { listings, maintenanceRequests } from '../../data'
 import type { LandlordRow, StudentRow, SortDir } from '../../data'
-import { fetchAdminAccounts, setAdminAccountStatus, type AdminAccount, type AdminAccountStatus } from '../../api/admin'
+import {
+  createAdminCategory,
+  deleteAdminCategory,
+  fetchAdminAccounts,
+  fetchAdminCategories,
+  fetchAdminListings,
+  renameAdminCategory,
+  setAdminAccountStatus,
+  setAdminListingCategory,
+  setAdminListingModerationStatus,
+  type AdminAccount,
+  type AdminAccountStatus,
+  type AdminCategory,
+  type AdminListing,
+  type AdminModerationStatus,
+} from '../../api/admin'
 import ListingDetailPage from '../../components/ListingDetail'
 import NotificationBell from '../../components/NotificationBell'
 import { adminNotifs } from './constants'
@@ -53,9 +68,27 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
   const [page, setPage] = useState<AdminPage>('overview')
   const [adminSignOutConfirm, setAdminSignOutConfirm] = useState(false)
   const [adminListingView, setAdminListingView] = useState<Listing | null>(null)
-  const openAdminListing = (l: Listing) => { setAdminListingView(l); setPage('listing-detail') }
+  const openAdminListing = (listing: AdminListing) => {
+    const numericId = Number(listing.propertyCode.match(/\d+$/)?.[0] ?? 0)
+    setAdminListingView({
+      id: numericId,
+      propertyId: listing.propertyCode,
+      title: listing.title,
+      landlord: listing.landlordName,
+      type: listing.categoryName ?? 'Property',
+      distance: '—',
+      price: listing.priceBDT,
+      status: listing.availabilityStatus,
+      facilities: [],
+      image: 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800&h=500&fit=crop&auto=format',
+      parking: 'Not Available',
+      description: `Moderation status: ${listing.moderationStatus}`,
+    })
+    setPage('listing-detail')
+  }
 
-  const [categories, setCategories] = useState(['Single', 'Shared', 'Mess', 'Sublet'])
+  const [categories, setCategories] = useState<AdminCategory[]>([])
+  const [adminListings, setAdminListings] = useState<AdminListing[]>([])
   const [newCat, setNewCat] = useState('')
 
   const [adminComplaints] = useState<AdminComplaint[]>([
@@ -117,11 +150,18 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
 
   useEffect(() => {
     let mounted = true
-    Promise.all([fetchAdminAccounts('landlord'), fetchAdminAccounts('student')])
-      .then(([landlords, students]) => {
+    Promise.all([
+      fetchAdminAccounts('landlord'),
+      fetchAdminAccounts('student'),
+      fetchAdminCategories(),
+      fetchAdminListings(),
+    ])
+      .then(([landlords, students, loadedCategories, loadedListings]) => {
         if (!mounted) return
         setLRows(landlords.map(toLandlordRow))
         setSRows(students.map(toStudentRow))
+        setCategories(loadedCategories)
+        setAdminListings(loadedListings)
       })
       .catch((error: unknown) => {
         if (mounted) setAdminError(error instanceof Error ? error.message : 'Could not load administrator data.')
@@ -152,6 +192,66 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
   const approveLandlordRow = (id: string) => changeAccountStatus(id, 'active')
   const suspendLandlordRow = (id: string) => changeAccountStatus(id, 'suspended')
   const removeLandlordRow = (id: string) => changeAccountStatus(id, 'deactivated')
+
+  const addCategory = async (name: string) => {
+    try {
+      setAdminError('')
+      const category = await createAdminCategory(name)
+      setCategories(current => [...current, category].sort((left, right) => left.name.localeCompare(right.name)))
+      setNewCat('')
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : 'Could not create this category.')
+    }
+  }
+
+  const editCategory = async (id: string, name: string) => {
+    try {
+      setAdminError('')
+      const category = await renameAdminCategory(id, name)
+      setCategories(current => current.map(item => item.id === id ? category : item).sort((left, right) => left.name.localeCompare(right.name)))
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : 'Could not rename this category.')
+    }
+  }
+
+  const removeCategory = async (id: string) => {
+    try {
+      setAdminError('')
+      await deleteAdminCategory(id)
+      setCategories(current => current.filter(category => category.id !== id))
+      setAdminListings(current => current.map(listing => listing.categoryId === Number(id)
+        ? { ...listing, categoryId: undefined, categoryName: undefined }
+        : listing))
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : 'Could not delete this category.')
+    }
+  }
+
+  const moderateListing = async (identifier: string, status: AdminModerationStatus) => {
+    const reason = window.prompt(`Enter a reason for changing this listing to ${status}:`)
+    if (reason === null) return
+    if (reason.trim().length < 3) {
+      setAdminError('Please provide a reason with at least 3 characters.')
+      return
+    }
+    try {
+      setAdminError('')
+      const updated = await setAdminListingModerationStatus(identifier, status, reason.trim())
+      setAdminListings(current => current.map(listing => listing.propertyCode === identifier ? updated : listing))
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : 'Could not update this listing.')
+    }
+  }
+
+  const assignListingCategory = async (identifier: string, categoryId: number | null) => {
+    try {
+      setAdminError('')
+      const updated = await setAdminListingCategory(identifier, categoryId)
+      setAdminListings(current => current.map(listing => listing.propertyCode === identifier ? updated : listing))
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : 'Could not assign this category.')
+    }
+  }
 
   const [sRows, setSRows] = useState<StudentRow[]>([])
   const [sSearch, setSSearch] = useState('')
@@ -278,11 +378,16 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
 
           {page === 'categories' && (
             <CategoriesPage
-              listings={listings}
+              listings={adminListings}
               categories={categories}
-              setCategories={setCategories}
               newCat={newCat}
               setNewCat={setNewCat}
+              isLoading={isLoadingAccounts}
+              onCreateCategory={addCategory}
+              onRenameCategory={editCategory}
+              onDeleteCategory={removeCategory}
+              onAssignCategory={assignListingCategory}
+              onModerateListing={moderateListing}
               catSearch={catSearch}
               setCatSearch={setCatSearch}
               catFilter={catFilter}

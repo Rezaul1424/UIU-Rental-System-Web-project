@@ -104,4 +104,43 @@ describe('Module 8 administrator listing and category operations', () => {
     expect(deleted.status).toBe(204);
     expect(getAuditEvents().filter((event) => event.resourceType === 'listing_category')).toHaveLength(3);
   });
+
+  it('assigns and clears a listing category with audit events', async () => {
+    const token = await createAdminToken(`module8-assign-category-${Date.now()}@uiu.ac.bd`);
+    const categories = await request(app)
+      .get('/api/v1/admin/categories')
+      .set('Authorization', `Bearer ${token}`);
+    const category = categories.body.data[0];
+
+    const assigned = await request(app)
+      .patch('/api/v1/admin/listings/UIU-1001/category')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ categoryId: Number(category.id) });
+    expect(assigned.status).toBe(200);
+    expect(assigned.body.data.categoryId).toBe(Number(category.id));
+    expect(assigned.body.data.categoryName).toBe(category.name);
+
+    const cleared = await request(app)
+      .patch('/api/v1/admin/listings/UIU-1001/category')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ categoryId: null });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.data.categoryId).toBeUndefined();
+    expect(getAuditEvents().filter((event) => event.action === 'LISTING_CATEGORY_CHANGED')).toHaveLength(2);
+  });
+
+  it('rejects non-admin category assignment and unknown category IDs', async () => {
+    const unauthenticated = await request(app)
+      .patch('/api/v1/admin/listings/UIU-1001/category')
+      .send({ categoryId: 1 });
+    expect(unauthenticated.status).toBe(401);
+
+    const token = await createAdminToken(`module8-invalid-category-${Date.now()}@uiu.ac.bd`);
+    const response = await request(app)
+      .patch('/api/v1/admin/listings/UIU-1001/category')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ categoryId: 9999 });
+    expect(response.status).toBe(404);
+    expect(response.body.error.code).toBe('CATEGORY_NOT_FOUND');
+  });
 });

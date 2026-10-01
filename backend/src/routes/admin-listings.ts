@@ -7,6 +7,7 @@ import {
   listAdminCategories,
   listAdminListings,
   updateAdminCategory,
+  updateAdminListingCategory,
   updateAdminListingStatus,
 } from '../listings/admin-repository.js';
 import type { ModerationStatus } from '../listings/admin-repository.js';
@@ -30,6 +31,7 @@ const statusSchema = z.object({
 });
 
 const categorySchema = z.object({ name: z.string().trim().min(2).max(80) });
+const listingCategorySchema = z.object({ categoryId: z.number().int().positive().nullable() });
 const moderationTransitions: Record<ModerationStatus, ModerationStatus[]> = {
   draft: ['pending', 'archived'],
   pending: ['approved', 'rejected', 'archived'],
@@ -88,6 +90,34 @@ router.patch('/listings/:identifier/status', asyncHandler(async (req, res) => {
     requestMetadata: { reason: data.reason },
   });
   res.json({ data: result.listing });
+}));
+
+router.patch('/listings/:identifier/category', asyncHandler(async (req, res) => {
+  const actor = req.user;
+  if (!actor) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+  const identifier = String(req.params.identifier);
+  const { categoryId } = listingCategorySchema.parse(req.body);
+  const current = await getAdminListing(identifier);
+  if (!current) throw new AppError(404, 'LISTING_NOT_FOUND', 'Listing does not exist');
+
+  const categories = await listAdminCategories();
+  const category = categoryId === null ? null : categories.find((item) => Number(item.id) === categoryId);
+  if (categoryId !== null && !category) throw new AppError(404, 'CATEGORY_NOT_FOUND', 'Category does not exist');
+  if ((current.categoryId ?? null) === (category ? Number(category.id) : null)) {
+    throw new AppError(409, 'CATEGORY_UNCHANGED', 'The listing already has this category');
+  }
+
+  const listing = await updateAdminListingCategory(identifier, category ?? null);
+  if (!listing) throw new AppError(404, 'LISTING_NOT_FOUND', 'Listing does not exist');
+  await recordAuditEvent({
+    actorId: actor.id,
+    action: 'LISTING_CATEGORY_CHANGED',
+    resourceType: 'listing',
+    resourceId: listing.propertyCode,
+    previousState: { categoryId: current.categoryId ?? null, categoryName: current.categoryName ?? null },
+    newState: { categoryId: listing.categoryId ?? null, categoryName: listing.categoryName ?? null },
+  });
+  res.json({ data: listing });
 }));
 
 router.get('/categories', asyncHandler(async (_req, res) => {

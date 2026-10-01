@@ -142,6 +142,19 @@ export async function updateAdminListingStatus(identifier: string, status: Moder
   return updated ? { listing: updated, previousStatus } : undefined;
 }
 
+export async function updateAdminListingCategory(identifier: string, category: AdminCategory | null): Promise<AdminListing | undefined> {
+  const current = await getAdminListing(identifier);
+  if (!current) return undefined;
+  if (persistentAdmin) {
+    await db.execute('UPDATE properties SET category_id = ? WHERE property_code = ? OR id = ?', [category ? Number(category.id) : null, identifier, identifier]);
+  } else {
+    current.categoryId = category ? Number(category.id) : undefined;
+    current.categoryName = category?.name;
+    current.updatedAt = new Date().toISOString();
+  }
+  return getAdminListing(identifier);
+}
+
 export async function listAdminCategories(): Promise<AdminCategory[]> {
   if (!persistentAdmin) return [...fixtureCategories];
   const [rows] = await db.query<RowDataPacket[]>('SELECT id, name, created_at FROM listing_categories ORDER BY name ASC');

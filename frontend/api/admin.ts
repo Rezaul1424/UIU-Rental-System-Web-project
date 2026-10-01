@@ -2,6 +2,8 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000'
 
 export type AdminAccountStatus = 'active' | 'pending' | 'suspended' | 'deactivated'
 export type AdminAccountRole = 'landlord' | 'student'
+export type AdminModerationStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'suspended' | 'archived'
+export type AdminAvailabilityStatus = 'available' | 'occupied' | 'maintenance'
 
 export type AdminAccount = {
   id: string
@@ -15,6 +17,23 @@ export type AdminAccount = {
   applicationCount?: number
 }
 
+export type AdminListing = {
+  id: string
+  propertyCode: string
+  title: string
+  landlordId: string
+  landlordName: string
+  categoryId?: number
+  categoryName?: string
+  moderationStatus: AdminModerationStatus
+  availabilityStatus: AdminAvailabilityStatus
+  priceBDT: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type AdminCategory = { id: string; name: string; createdAt: string }
+
 async function adminRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem('uiu_auth_token')
   if (!token) throw new Error('Please sign in with an administrator account to manage users.')
@@ -27,7 +46,8 @@ async function adminRequest<T>(path: string, init: RequestInit = {}): Promise<T>
       ...init.headers,
     },
   })
-  const result = await response.json() as { error?: { message?: string }; data?: AdminAccount[]; user?: AdminAccount }
+  if (response.status === 204) return undefined as T
+  const result = await response.json() as { error?: { message?: string } }
   if (!response.ok) {
     throw new Error(result.error?.message || `Admin request failed (${response.status}).`)
   }
@@ -58,4 +78,66 @@ export async function setAdminAccountStatus(
     body: JSON.stringify({ status, reason }),
   })
   return response.user
+}
+
+export async function fetchAdminListings(): Promise<AdminListing[]> {
+  const listings: AdminListing[] = []
+  let page = 1
+  let totalPages = 1
+  do {
+    const params = new URLSearchParams({ page: String(page), limit: '100' })
+    const response = await adminRequest<{ data: AdminListing[]; meta: { totalPages: number } }>(`/listings?${params}`)
+    listings.push(...response.data)
+    totalPages = response.meta.totalPages
+    page += 1
+  } while (page <= totalPages)
+  return listings
+}
+
+export async function fetchAdminCategories(): Promise<AdminCategory[]> {
+  const response = await adminRequest<{ data: AdminCategory[] }>('/categories')
+  return response.data
+}
+
+export async function createAdminCategory(name: string): Promise<AdminCategory> {
+  const response = await adminRequest<{ data: AdminCategory }>('/categories', {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  })
+  return response.data
+}
+
+export async function renameAdminCategory(id: string, name: string): Promise<AdminCategory> {
+  const response = await adminRequest<{ data: AdminCategory }>(`/categories/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  })
+  return response.data
+}
+
+export async function deleteAdminCategory(id: string): Promise<void> {
+  await adminRequest<void>(`/categories/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export async function setAdminListingModerationStatus(
+  identifier: string,
+  status: AdminModerationStatus,
+  reason: string,
+): Promise<AdminListing> {
+  const response = await adminRequest<{ data: AdminListing }>(`/listings/${encodeURIComponent(identifier)}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status, reason }),
+  })
+  return response.data
+}
+
+export async function setAdminListingCategory(
+  identifier: string,
+  categoryId: number | null,
+): Promise<AdminListing> {
+  const response = await adminRequest<{ data: AdminListing }>(`/listings/${encodeURIComponent(identifier)}/category`, {
+    method: 'PATCH',
+    body: JSON.stringify({ categoryId }),
+  })
+  return response.data
 }
