@@ -34,6 +34,21 @@ export type AdminListing = {
 
 export type AdminCategory = { id: string; name: string; createdAt: string }
 
+export type AdminReportData = {
+  generatedAt: string
+  userGrowth: { month: string; students: number; landlords: number }[]
+  rentCollection: { month: string; collected: number; pending: number; overdue: number; expected: number }[]
+  listingActivity: { month: string; newListings: number }[]
+  listingStatuses: { available: number; occupied: number; maintenance: number }
+  listingTypes: { type: string; count: number }[]
+  accountStatuses: {
+    landlords: Record<'active' | 'pending' | 'suspended' | 'deactivated', number>
+    students: Record<'active' | 'pending' | 'suspended' | 'deactivated', number>
+  }
+  maintenanceByMonth: { month: string; open: number; inProgress: number; resolved: number }[]
+  maintenanceRequests: { id: number; property: string; tenant: string; issue: string; createdAt: string; status: string }[]
+}
+
 async function adminRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem('uiu_auth_token')
   if (!token) throw new Error('Please sign in with an administrator account to manage users.')
@@ -139,5 +154,10 @@ export async function setAdminListingCategory(
     method: 'PATCH',
     body: JSON.stringify({ categoryId }),
   })
+  return response.data
+}
+
+export async function fetchAdminReportData(): Promise<AdminReportData> {
+  const response = await adminRequest<{ data: AdminReportData }>('/reports')
   return response.data
 }

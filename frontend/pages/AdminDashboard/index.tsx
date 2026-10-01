@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Listing } from '../../types'
-import { listings, maintenanceRequests } from '../../data'
+import { listings } from '../../data'
 import type { LandlordRow, StudentRow, SortDir } from '../../data'
 import {
   createAdminCategory,
@@ -8,6 +8,7 @@ import {
   fetchAdminAccounts,
   fetchAdminCategories,
   fetchAdminListings,
+  fetchAdminReportData,
   renameAdminCategory,
   setAdminAccountStatus,
   setAdminListingCategory,
@@ -17,6 +18,7 @@ import {
   type AdminCategory,
   type AdminListing,
   type AdminModerationStatus,
+  type AdminReportData,
 } from '../../api/admin'
 import ListingDetailPage from '../../components/ListingDetail'
 import NotificationBell from '../../components/NotificationBell'
@@ -147,6 +149,10 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
 
   const [adminError, setAdminError] = useState('')
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(true)
+  const [reports, setReports] = useState<AdminReportData | null>(null)
+  const [reportsError, setReportsError] = useState('')
+  const [isLoadingReports, setIsLoadingReports] = useState(false)
+  const [reportsRetry, setReportsRetry] = useState(0)
 
   useEffect(() => {
     let mounted = true
@@ -171,6 +177,20 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
       })
     return () => { mounted = false }
   }, [])
+
+  useEffect(() => {
+    if (page !== 'reports') return
+    let mounted = true
+    setIsLoadingReports(true)
+    setReportsError('')
+    fetchAdminReportData()
+      .then(data => { if (mounted) setReports(data) })
+      .catch((error: unknown) => {
+        if (mounted) setReportsError(error instanceof Error ? error.message : 'Could not load reports.')
+      })
+      .finally(() => { if (mounted) setIsLoadingReports(false) })
+    return () => { mounted = false }
+  }, [page, reportsRetry])
 
   const changeAccountStatus = async (id: string, status: AdminAccountStatus) => {
     const reason = window.prompt(`Enter a reason for changing this account to ${status}:`)
@@ -400,10 +420,10 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
 
           {page === 'reports' && (
             <ReportsPage
-              listings={listings}
-              lRows={lRows}
-              sRows={sRows}
-              maintenanceRequests={maintenanceRequests}
+              report={reports}
+              isLoading={isLoadingReports}
+              error={reportsError}
+              onRetry={() => setReportsRetry(value => value + 1)}
             />
           )}
 
