@@ -4,11 +4,13 @@ import type { Review, StudentPage } from '../types'
 type ReviewsPageProps = {
   page: StudentPage
   reviewHistory: Review[]
-  reviewableLandlords: Array<{ landlord: string; property: string; listingId: number }>
-  reviewTarget: { landlord: string; property: string; listingId: number }
-  setReviewTarget: (value: { landlord: string; property: string; listingId: number }) => void
+  reviewableLandlords: Array<{ landlord: string; property: string; listingId: string }>
+  reviewTarget: { landlord: string; property: string; listingId: string }
+  setReviewTarget: (value: { landlord: string; property: string; listingId: string }) => void
   reviewText: string
   setReviewText: (value: string) => void
+  reviewSubmitting: boolean
+  reviewError: string
   questionAnswers: number[]
   setQuestionAnswers: React.Dispatch<React.SetStateAction<number[]>>
   wouldRecommend: 'yes' | 'no' | 'maybe' | ''
@@ -17,10 +19,10 @@ type ReviewsPageProps = {
   setReviewStep: (value: number) => void
   submitReview: () => void
   setPage: (page: StudentPage) => void
-  alreadyReviewed: (listingId: number) => boolean
+  alreadyReviewed: (listingId: string) => boolean
 }
 
-export default function ReviewsPage({ page, reviewHistory, reviewableLandlords, reviewTarget, setReviewTarget, reviewText, setReviewText, questionAnswers, setQuestionAnswers, wouldRecommend, setWouldRecommend, reviewStep, setReviewStep, submitReview, setPage, alreadyReviewed }: ReviewsPageProps) {
+export default function ReviewsPage({ page, reviewHistory, reviewableLandlords, reviewTarget, setReviewTarget, reviewText, setReviewText, reviewSubmitting, reviewError, questionAnswers, setQuestionAnswers, wouldRecommend, setWouldRecommend, reviewStep, setReviewStep, submitReview, setPage, alreadyReviewed }: ReviewsPageProps) {
   const starQuestions = [
     { key: 0, label: 'Landlord Communication', q: "How would you rate your landlord's communication?" },
     { key: 1, label: 'Maintenance Responsiveness', q: 'How responsive was your landlord to maintenance issues?' },
@@ -75,6 +77,7 @@ export default function ReviewsPage({ page, reviewHistory, reviewableLandlords, 
                 </label>
               ))}
             </div>
+            {reviewableLandlords.length === 0 && <div className="text-sm text-gray-500">No live listings are available to review right now.</div>}
             {alreadyReviewed(reviewTarget.listingId) && (
               <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3.5 flex items-center justify-between">
                 <span className="text-sm text-emerald-800 font-medium">You've already reviewed {reviewTarget.landlord}</span>
@@ -82,7 +85,7 @@ export default function ReviewsPage({ page, reviewHistory, reviewableLandlords, 
               </div>
             )}
           </div>
-          {!alreadyReviewed(reviewTarget.listingId) && (
+          {reviewableLandlords.length > 0 && !alreadyReviewed(reviewTarget.listingId) && (
             <>
               {starQuestions.map(({ key, label, q }) => (
                 <div key={key} className="bg-white rounded-2xl p-6 shadow-sm space-y-3">
@@ -115,8 +118,9 @@ export default function ReviewsPage({ page, reviewHistory, reviewableLandlords, 
               </div>
               <div className="bg-white rounded-2xl p-5 shadow-sm flex items-center justify-between">
                 <div className="text-xs text-gray-400">{canSubmit ? <span className="text-emerald-600 font-medium">✓ Ready to submit</span> : <span>Complete all required fields <span className="text-red-500">*</span></span>}</div>
-                <button disabled={!canSubmit} onClick={() => { submitReview(); setReviewStep(7) }} className="bg-[#111827] text-white text-sm font-semibold px-6 py-2.5 rounded-xl hover:bg-[#1f2937] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">Submit Review</button>
+                <button disabled={!canSubmit || reviewSubmitting} onClick={() => void submitReview()} className="bg-[#111827] text-white text-sm font-semibold px-6 py-2.5 rounded-xl hover:bg-[#1f2937] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">{reviewSubmitting ? 'Saving…' : 'Submit Review'}</button>
               </div>
+              {reviewError && <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2" role="alert">{reviewError}</p>}
             </>
           )}
         </div>

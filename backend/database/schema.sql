@@ -199,6 +199,7 @@ CREATE TABLE `maintenance_requests` (
   `description` TEXT DEFAULT NULL,
   `priority` ENUM('Low', 'Medium', 'High') NOT NULL DEFAULT 'Medium',
   `status` ENUM('open', 'in-progress', 'resolved') NOT NULL DEFAULT 'open',
+  `progress_stage` TINYINT UNSIGNED NOT NULL DEFAULT 1,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT `fk_maint_property`

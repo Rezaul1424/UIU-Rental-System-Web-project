@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Listing } from '../../types'
-import { listings } from '../../data'
 import ListingDetailPage from '../../components/ListingDetail'
 import NotificationBell from '../../components/NotificationBell'
 import { addLandlordMaintenanceComment, createListing, deleteListing, getApplications, getLeases, getLandlordComplaints, getLandlordMaintenanceComments, getMaintenanceRequests, getMyListings, getProfile, reviewApplication, submitLandlordComplaint as submitLandlordComplaintApi, updateListing, updateMaintenanceStatus, updateProfile as updateLandlordProfile } from '../../lib/landlordApi'
@@ -39,15 +38,6 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
     const date = new Date(value)
     if (Number.isNaN(date.getTime())) return 'N/A'
     return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-  }
-
-  const mapMaintenanceStatusToStage = (status?: string): MaintStage => {
-    switch (status) {
-      case 'open': return 1
-      case 'in-progress': return 3
-      case 'resolved': return 5
-      default: return 1
-    }
   }
 
   const mapStageToStatus = (stage: MaintStage): 'open' | 'in-progress' | 'resolved' => {
@@ -108,7 +98,7 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
             tenant: request.studentName || `Student ${request.studentId}`,
             date: request.createdAt ? formatDisplayDate(request.createdAt) : 'N/A',
             priority: ['Low', 'Medium', 'High'].includes(String(request.priority)) ? (request.priority as 'Low' | 'Medium' | 'High') : 'Medium',
-            stage: mapMaintenanceStatusToStage(request.status),
+            stage: request.stage as MaintStage,
             estimatedDate: 'TBD',
             comments: [{ from: 'tenant', text: request.description ?? 'Maintenance request submitted.', date: request.createdAt ? formatDisplayDate(request.createdAt) : 'Today' }],
             hasPhotos: false,
@@ -443,7 +433,7 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
     if (!current || current.stage >= 6) return
     const nextStage = (current.stage + 1) as MaintStage
     try {
-      await updateMaintenanceStatus(id, { status: mapStageToStatus(nextStage) })
+      await updateMaintenanceStatus(id, { stage: nextStage, status: mapStageToStatus(nextStage) })
       setMReqs(ms => ms.map(m => m.id === id ? { ...m, stage: nextStage } : m))
       setDashboardError('')
     } catch (error) {
@@ -455,7 +445,7 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
     if (!current || current.stage <= 0) return
     const nextStage = (current.stage - 1) as MaintStage
     try {
-      await updateMaintenanceStatus(id, { status: mapStageToStatus(nextStage) })
+      await updateMaintenanceStatus(id, { stage: nextStage, status: mapStageToStatus(nextStage) })
       setMReqs(ms => ms.map(m => m.id === id ? { ...m, stage: nextStage } : m))
       setDashboardError('')
     } catch (error) {

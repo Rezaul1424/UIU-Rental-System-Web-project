@@ -87,6 +87,7 @@ type DbMaintenanceRow = RowDataPacket & {
   description?: string | null;
   priority: 'Low' | 'Medium' | 'High';
   status: 'open' | 'in-progress' | 'resolved';
+  progress_stage: number;
   created_at: Date;
   updated_at: Date;
   student_name?: string | null;
@@ -125,6 +126,7 @@ type TestMaintenanceRecord = {
   description?: string;
   priority: 'Low' | 'Medium' | 'High';
   status: 'open' | 'in-progress' | 'resolved';
+  stage: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -242,8 +244,8 @@ export interface LandlordRepository {
   getApplications(landlordId: string): Promise<Array<{ id: string; propertyId: string; studentId: string; landlordId: string; status: 'under-review' | 'accepted' | 'rejected' | 'cancelled'; createdAt: string }>>;
   reviewApplication(landlordId: string, applicationId: string, payload: ApplicationReviewPayload): Promise<{ id: string; status: 'under-review' | 'accepted' | 'rejected' | 'cancelled'; reviewedAt: string }>;
   getLeases(landlordId: string): Promise<LandlordLeaseSummary[]>;
-  getMaintenanceRequests(landlordId: string): Promise<Array<{ id: string; propertyId: string; studentId: string; landlordId: string; issue: string; priority: 'Low' | 'Medium' | 'High'; status: 'open' | 'in-progress' | 'resolved'; createdAt: string }>>;
-  updateMaintenanceStatus(landlordId: string, requestId: string, payload: MaintenanceUpdatePayload): Promise<{ id: string; status: 'open' | 'in-progress' | 'resolved'; updatedAt: string }>;
+  getMaintenanceRequests(landlordId: string): Promise<Array<{ id: string; propertyId: string; studentId: string; landlordId: string; issue: string; priority: 'Low' | 'Medium' | 'High'; status: 'open' | 'in-progress' | 'resolved'; stage: number; createdAt: string }>>;
+  updateMaintenanceStatus(landlordId: string, requestId: string, payload: MaintenanceUpdatePayload): Promise<{ id: string; status: 'open' | 'in-progress' | 'resolved'; stage: number; updatedAt: string }>;
   getMaintenanceComments(landlordId: string, requestId: string): Promise<any[]>;
   addMaintenanceComment(landlordId: string, requestId: string, message: string, role: 'landlord' | 'student'): Promise<any>;
   getComplaints(landlordId: string): Promise<any[]>;
@@ -675,9 +677,9 @@ export const landlordRepository: LandlordRepository = {
     }));
   },
 
-  async getMaintenanceRequests(landlordId: string): Promise<Array<{ id: string; propertyId: string; studentId: string; landlordId: string; issue: string; priority: 'Low' | 'Medium' | 'High'; status: 'open' | 'in-progress' | 'resolved'; createdAt: string }>> {
+  async getMaintenanceRequests(landlordId: string): Promise<Array<{ id: string; propertyId: string; studentId: string; landlordId: string; issue: string; priority: 'Low' | 'Medium' | 'High'; status: 'open' | 'in-progress' | 'resolved'; stage: number; createdAt: string }>> {
     if (useFixtures()) {
-      const entries: Array<{ id: string; propertyId: string; studentId: string; landlordId: string; issue: string; priority: 'Low' | 'Medium' | 'High'; status: 'open' | 'in-progress' | 'resolved'; createdAt: string }> = [];
+      const entries: Array<{ id: string; propertyId: string; studentId: string; landlordId: string; issue: string; priority: 'Low' | 'Medium' | 'High'; status: 'open' | 'in-progress' | 'resolved'; stage: number; createdAt: string }> = [];
       for (const list of testMaintenanceRequests.values()) {
         for (const request of list) {
           if (request.landlordId === landlordId) {
@@ -689,6 +691,7 @@ export const landlordRepository: LandlordRepository = {
               issue: request.issue,
               priority: request.priority,
               status: request.status,
+              stage: request.stage,
               createdAt: request.createdAt,
             });
           }
@@ -719,19 +722,21 @@ export const landlordRepository: LandlordRepository = {
       description: row.description ?? undefined,
       priority: row.priority,
       status: row.status,
+      stage: Number(row.progress_stage),
       createdAt: row.created_at.toISOString(),
     }));
   },
 
-  async updateMaintenanceStatus(landlordId: string, requestId: string, payload: MaintenanceUpdatePayload): Promise<{ id: string; status: 'open' | 'in-progress' | 'resolved'; updatedAt: string }> {
+  async updateMaintenanceStatus(landlordId: string, requestId: string, payload: MaintenanceUpdatePayload): Promise<{ id: string; status: 'open' | 'in-progress' | 'resolved'; stage: number; updatedAt: string }> {
+    const stage = payload.stage ?? (payload.status === 'resolved' ? 5 : payload.status === 'in-progress' ? 3 : 1);
+    const status = stage >= 5 ? 'resolved' : stage >= 2 ? 'in-progress' : 'open';
     if (useFixtures()) {
       for (const list of testMaintenanceRequests.values()) {
         const index = list.findIndex((request) => request.id === requestId && request.landlordId === landlordId);
         if (index !== -1) {
           const current = list[index];
-          const status = payload.status === 'open' || payload.status === 'in-progress' || payload.status === 'resolved' ? payload.status : current.status;
-          list[index] = { ...current, status, updatedAt: new Date().toISOString() };
-          return { id: current.id, status, updatedAt: list[index].updatedAt };
+          list[index] = { ...current, status, stage, updatedAt: new Date().toISOString() };
+          return { id: current.id, status, stage, updatedAt: list[index].updatedAt };
         }
       }
       throw new AppError(404, 'MAINTENANCE_REQUEST_NOT_FOUND', 'Maintenance request does not exist for your properties');
@@ -746,9 +751,8 @@ export const landlordRepository: LandlordRepository = {
     const [existing] = await db.query<RowDataPacket[]>(`SELECT id FROM maintenance_requests WHERE id = ? AND landlord_id = ? LIMIT 1`, [numericRequestId, landlordNumericId]);
     if (!existing[0]) throw new AppError(403, 'FORBIDDEN', 'You do not own this maintenance request');
 
-    const status = payload.status === 'open' || payload.status === 'in-progress' || payload.status === 'resolved' ? payload.status : 'open';
-    await db.execute('UPDATE maintenance_requests SET status = ?, updated_at = NOW() WHERE id = ? AND landlord_id = ?', [status, numericRequestId, landlordNumericId]);
-    return { id: String(numericRequestId), status, updatedAt: new Date().toISOString() };
+    await db.execute('UPDATE maintenance_requests SET status = ?, progress_stage = ?, updated_at = NOW() WHERE id = ? AND landlord_id = ?', [status, stage, numericRequestId, landlordNumericId]);
+    return { id: String(numericRequestId), status, stage, updatedAt: new Date().toISOString() };
   },
 
   async getMaintenanceComments(landlordId: string, requestId: string): Promise<any[]> {
@@ -973,6 +977,7 @@ export function seedFixtureMaintenanceRequest(landlordId: string, requestId: str
       issue: 'Fixture maintenance issue',
       priority: 'High',
       status: 'open',
+      stage: 1,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });

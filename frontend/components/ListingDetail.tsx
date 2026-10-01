@@ -30,6 +30,8 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
   const [carouselIdx, setCarouselIdx] = useState(0)
   const [showReviewsModal, setShowReviewsModal] = useState(false)
   const [fetchedReviews, setFetchedReviews] = useState<Array<{ name: string; stars: number; comment: string; date: string; property: string }>>([])
+  const [reviewsLoading, setReviewsLoading] = useState(false)
+  const [reviewsLoadError, setReviewsLoadError] = useState(false)
 
   const rawPin = listing.mapPin ?? listingPins[listing.id] ?? { x: 50, y: 50 }
   const pin = {
@@ -43,41 +45,41 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
   const prevImg = () => setCarouselIdx(i => (i - 1 + images.length) % images.length)
   const nextImg = () => setCarouselIdx(i => (i + 1) % images.length)
 
-  const sampleReviews = [
-    { name: 'Tanvir Ahmed', stars: 4, comment: 'Great landlord, very responsive. The property is well-maintained.', date: 'Jun 2026', property: listing.title || 'UIU Rental' },
-    { name: 'Sadia Islam', stars: 5, comment: 'Excellent condition, felt like home immediately. Highly recommend.', date: 'Apr 2026', property: listing.title || 'UIU Rental' },
-    { name: 'Rifat Hassan', stars: 3, comment: 'Average experience. Some maintenance issues took a while to resolve.', date: 'Feb 2026', property: listing.title || 'UIU Rental' },
-  ]
-
   useEffect(() => {
     let active = true
     const propId = listing.propertyId || listing.id
     if (!propId) return
 
+    setReviewsLoading(true)
+    setReviewsLoadError(false)
+    setFetchedReviews([])
     api.get<Array<any> | { data?: Array<any> }>(`/api/v1/listings/${propId}/reviews`)
       .then(res => {
         if (!active) return
         const list = Array.isArray(res) ? res : Array.isArray((res as any)?.data) ? (res as any).data : []
-        if (list.length > 0) {
-          setFetchedReviews(list.map((r: any) => ({
-            name: r.studentName || r.name || 'UIU Student',
-            stars: Number(r.propertyStars || r.landlordStars || 5),
-            comment: r.comment || r.text || '',
-            date: r.date || (r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : 'Recent'),
-            property: r.property || listing.title || 'UIU Rental',
-          })))
-        }
+        setFetchedReviews(list.map((r: any) => ({
+          name: r.studentName || r.name || 'UIU Student',
+          stars: Number(r.landlordStars || r.propertyStars || 0),
+          comment: r.comment || r.text || '',
+          date: r.date || (r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : 'Recent'),
+          property: r.property || listing.title || 'UIU Rental',
+        })))
       })
-      .catch(() => {})
+      .catch(() => {
+        if (active) setReviewsLoadError(true)
+      })
+      .finally(() => {
+        if (active) setReviewsLoading(false)
+      })
 
     return () => { active = false }
   }, [listing.id, listing.propertyId])
 
-  const activeReviews = fetchedReviews.length > 0 ? fetchedReviews : sampleReviews
+  const activeReviews = fetchedReviews
   const avgRating = fetchedReviews.length > 0
     ? (fetchedReviews.reduce((sum, r) => sum + r.stars, 0) / fetchedReviews.length).toFixed(1)
-    : (listing.rating ? Number(listing.rating).toFixed(1) : '4.5')
-  const totalReviewsCount = fetchedReviews.length > 0 ? fetchedReviews.length : (listing.rating ? 12 : sampleReviews.length)
+    : '—'
+  const totalReviewsCount = fetchedReviews.length
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
@@ -297,7 +299,10 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
               </div>
             </div>
             <div className="overflow-y-auto space-y-3 flex-1">
-              {activeReviews.map((r, i) => (
+              {reviewsLoading && <p className="text-sm text-gray-500 py-6 text-center">Loading reviews…</p>}
+              {!reviewsLoading && reviewsLoadError && <p className="text-sm text-red-700 py-6 text-center">Reviews could not be loaded.</p>}
+              {!reviewsLoading && !reviewsLoadError && activeReviews.length === 0 && <p className="text-sm text-gray-500 py-6 text-center">No reviews for this listing yet.</p>}
+              {!reviewsLoading && !reviewsLoadError && activeReviews.map((r, i) => (
                 <div key={i} className="border border-gray-100 rounded-xl p-4">
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">

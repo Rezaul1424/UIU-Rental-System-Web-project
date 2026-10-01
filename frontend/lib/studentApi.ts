@@ -111,6 +111,7 @@ export type StudentReceiptItem = {
 
 export type StudentMaintenanceRecord = {
   id?: string | number;
+  stage?: number;
   propertyId?: string;
   landlordId?: string;
   category?: string;
@@ -201,6 +202,7 @@ export const getMaintenanceRequests = async (): Promise<StudentMaintenanceRecord
     description: request.description,
     priority: ['Low', 'Medium', 'High'].includes(String(request.priority)) ? request.priority : 'Medium',
     status: ['open', 'in-progress', 'resolved'].includes(String(request.status)) ? request.status : 'open',
+    stage: Number(request.stage ?? (request.status === 'resolved' ? 5 : request.status === 'in-progress' ? 3 : 1)),
     createdAt: request.createdAt ?? request.created_at,
     updatedAt: request.updatedAt ?? request.updated_at,
   }));

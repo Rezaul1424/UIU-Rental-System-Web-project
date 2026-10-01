@@ -23,7 +23,7 @@ import type { StudentPage } from './types'
 export default function StudentDashboard({ userName, onSignOut }: { userName: string; onSignOut: () => void }) {
   type AppStatus = 'under-review' | 'accepted' | 'rejected' | 'cancelled'
   type Application = StudentApplication & { status: AppStatus }
-  type Review = { id: number; landlord: string; property: string; listingId: number; landlordStars: number; propStars: number; text: string; date: string }
+  type Review = { id: number; landlord: string; property: string; listingId: string; landlordStars: number; propStars: number; text: string; date: string }
   type ChatMsg = { from: 'student' | 'landlord'; text: string }
 
   const [page, setPage] = useState<StudentPage>('overview')
@@ -75,6 +75,7 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
           description: request.description,
           property: leasesList.find(l => l.propertyId === request.propertyId)?.propertyTitle || (leasesList[0]?.propertyTitle ?? 'Rental Unit'),
           status: request.status,
+          stage: request.stage,
           date: request.createdAt ? new Date(request.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A',
         })) : [])
         if (Array.isArray(reviewsResult)) {
@@ -82,7 +83,7 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
             id: Number(r.id ?? Date.now()),
             landlord: r.landlord || r.landlordName || 'Landlord',
             property: r.property || r.propertyTitle || 'Property',
-            listingId: Number(r.propertyId ?? r.listingId ?? 0),
+            listingId: String(r.propertyId ?? r.listingId ?? ''),
             landlordStars: Number(r.landlordStars ?? 0),
             propStars: Number(r.propStars ?? r.propertyStars ?? 0),
             text: r.text || r.comment || '',
@@ -371,68 +372,66 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
   // ── Reviews ──────────────────────────────────────────────────────────────────
   // Landlords the student can review: current + any previously applied
   const reviewableLandlords = useMemo(() => {
-    const sourceListings = allListings.length > 0 ? allListings : listings
-    const derived = sourceListings
+    return allListings
       .filter((listing) => listing.landlord && listing.title)
       .map((listing) => ({
         landlord: listing.landlord,
         property: listing.title,
-        listingId: listing.id,
+        listingId: listing.propertyId || String(listing.id),
       }))
-
-    if (derived.length > 0) return derived
-
-    return [
-      { landlord: 'Rahman Faruk', property: 'Studio near Gate 3', listingId: 1 },
-      { landlord: 'Nusrat Jahan', property: 'Shared Mess – South Campus', listingId: 2 },
-    ]
   }, [allListings])
 
-  const [reviewTarget, setReviewTarget] = useState(reviewableLandlords[0])
+  const [reviewTarget, setReviewTarget] = useState(() => reviewableLandlords[0] ?? { landlord: '', property: '', listingId: '' })
   useEffect(() => {
-    if (!reviewableLandlords.some((entry) => entry.listingId === reviewTarget.listingId)) {
-      setReviewTarget(reviewableLandlords[0])
+    const currentTarget = reviewableLandlords.find((entry) => entry.listingId === reviewTarget.listingId)
+    const nextTarget = currentTarget ?? reviewableLandlords[0] ?? { landlord: '', property: '', listingId: '' }
+    if (nextTarget.landlord !== reviewTarget.landlord || nextTarget.property !== reviewTarget.property || nextTarget.listingId !== reviewTarget.listingId) {
+      setReviewTarget(nextTarget)
     }
-  }, [reviewTarget.listingId, reviewableLandlords])
+  }, [reviewTarget, reviewableLandlords])
 
-  const [landlordStars, setLandlordStars] = useState(0)
-  const [propStars, setPropStars] = useState(0)
   const [reviewText, setReviewText] = useState('')
   const [reviewHistory, setReviewHistory] = useState<Review[]>([])
+  const [reviewSubmitting, setReviewSubmitting] = useState(false)
+  const [reviewError, setReviewError] = useState('')
   const submitReview = async () => {
-    const calculatedPropStars = Math.min(5, Math.max(1, Math.round((questionAnswers[0] + questionAnswers[3] + questionAnswers[4]) / 3))) || 5
-    const calculatedLandlordStars = Math.min(5, Math.max(1, Math.round((questionAnswers[1] + questionAnswers[2]) / 2))) || 5
-    if (!reviewText.trim()) return
+    const calculatedLandlordStars = Math.round((questionAnswers[0] + questionAnswers[1]) / 2)
+    const calculatedPropStars = Math.round((questionAnswers[2] + questionAnswers[3]) / 2)
+    const comment = reviewText.trim()
+    if (!reviewTarget.listingId || !comment || reviewSubmitting) return
 
-    const optimistic: Review = {
-      id: Date.now(),
-      landlord: reviewTarget.landlord,
-      property: reviewTarget.property,
-      listingId: reviewTarget.listingId,
-      landlordStars: calculatedLandlordStars,
-      propStars: calculatedPropStars,
-      text: reviewText,
-      date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-    }
-    setReviewHistory(h => [optimistic, ...h.filter(r => r.listingId !== reviewTarget.listingId)])
-    setLandlordStars(0)
-    setPropStars(0)
-    setQuestionAnswers([0, 0, 0, 0, 0])
-    setWouldRecommend('')
-    setReviewText('')
-    setPage('review-history')
+    setReviewSubmitting(true)
+    setReviewError('')
     try {
-      await submitStudentReview({
+      const saved = await submitStudentReview({
         propertyId: String(reviewTarget.listingId),
         landlordStars: calculatedLandlordStars,
         propertyStars: calculatedPropStars,
-        comment: reviewText,
+        comment,
       })
+      const savedReview = saved as any
+      setReviewHistory(history => [{
+        id: Number(savedReview.id ?? Date.now()),
+        landlord: savedReview.landlord || reviewTarget.landlord,
+        property: savedReview.property || reviewTarget.property,
+        listingId: String(savedReview.propertyId ?? reviewTarget.listingId),
+        landlordStars: Number(savedReview.landlordStars ?? calculatedLandlordStars),
+        propStars: Number(savedReview.propStars ?? savedReview.propertyStars ?? calculatedPropStars),
+        text: savedReview.text ?? savedReview.comment ?? comment,
+        date: savedReview.date || (savedReview.createdAt ? new Date(savedReview.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })),
+      }, ...history])
+      setQuestionAnswers([0, 0, 0, 0, 0])
+      setWouldRecommend('')
+      setReviewText('')
+      setReviewStep(7)
     } catch (err) {
       console.error('Failed to submit review to backend:', err)
+      setReviewError(err instanceof Error ? err.message : 'Unable to save your review. Please try again.')
+    } finally {
+      setReviewSubmitting(false)
     }
   }
-  const alreadyReviewed = (listingId: number) => reviewHistory.some(r => r.listingId === listingId)
+  const alreadyReviewed = (listingId: string) => Boolean(listingId) && reviewHistory.some(r => r.listingId === listingId)
 
   // ── Chat ─────────────────────────────────────────────────────────────────────
   // All landlords from listings are available to chat with
@@ -781,6 +780,8 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
               setReviewTarget={setReviewTarget}
               reviewText={reviewText}
               setReviewText={setReviewText}
+              reviewSubmitting={reviewSubmitting}
+              reviewError={reviewError}
               questionAnswers={questionAnswers}
               setQuestionAnswers={setQuestionAnswers}
               wouldRecommend={wouldRecommend}

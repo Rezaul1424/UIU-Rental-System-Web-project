@@ -113,6 +113,73 @@ describe('Session 2 student dashboard flows', () => {
     expect(list.body.data.length).toBeGreaterThan(0);
   });
 
+  it('stores a review with the selected property owner and returns it in review history', async () => {
+    await request(app).post('/api/v1/auth/register').send({
+      name: 'Review Owner',
+      email: 'review.owner@uiu.ac.bd',
+      password: 'StrongPass123!',
+      studentId: 'LAND-REVIEW',
+      role: 'landlord',
+    });
+    await request(app).post('/api/v1/auth/register').send({
+      name: 'Review Student',
+      email: 'review.student@uiu.ac.bd',
+      password: 'StrongPass123!',
+      studentId: '01124000004',
+      role: 'student',
+    });
+
+    const landlordLogin = await request(app).post('/api/v1/auth/login').send({
+      email: 'review.owner@uiu.ac.bd',
+      password: 'StrongPass123!',
+    });
+    const studentLogin = await request(app).post('/api/v1/auth/login').send({
+      email: 'review.student@uiu.ac.bd',
+      password: 'StrongPass123!',
+    });
+    const listing = await request(app)
+      .post('/api/v1/landlord/listings')
+      .set('Authorization', `Bearer ${landlordLogin.body.token}`)
+      .send({
+        title: 'Reviewed student listing',
+        description: 'Listing used for review ownership coverage.',
+        type: 'studio',
+        priceBDT: 5000,
+        address: {
+          line1: 'Road 10',
+          area: 'Bashundhara',
+          city: 'Dhaka',
+          district: 'Dhaka',
+          latitude: 23.81,
+          longitude: 90.42,
+        },
+        status: 'approved',
+      });
+    expect(listing.status).toBe(201);
+
+    const review = await request(app)
+      .post('/api/v1/student/reviews')
+      .set('Authorization', `Bearer ${studentLogin.body.token}`)
+      .send({
+        propertyId: listing.body.data.id,
+        landlordStars: 4,
+        propertyStars: 5,
+        comment: 'Responsive landlord and a well-kept property.',
+      });
+
+    expect(review.status).toBe(201);
+    expect(review.body.data.landlordId).toBe(String(landlordLogin.body.user.id));
+
+    const history = await request(app)
+      .get('/api/v1/student/reviews')
+      .set('Authorization', `Bearer ${studentLogin.body.token}`);
+
+    expect(history.status).toBe(200);
+    expect(history.body.data).toHaveLength(1);
+    expect(history.body.data[0].text).toBe('Responsive landlord and a well-kept property.');
+    expect(history.body.data[0].landlordId).toBe(String(landlordLogin.body.user.id));
+  });
+
   it('returns empty student rent, receipts, lease, and maintenance collections for the logged-in student', async () => {
     await request(app).post('/api/v1/auth/register').send({
       name: 'Rent User',

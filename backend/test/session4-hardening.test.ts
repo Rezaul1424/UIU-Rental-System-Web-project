@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../src/app.js';
+import { seedFixtureMaintenanceRequest } from '../src/landlord/repository.js';
 
 const app = buildApp();
 
@@ -146,6 +147,40 @@ describe('Session 4 hardening', () => {
     expect(list.status).toBe(200);
     expect(Array.isArray(list.body.data)).toBe(true);
     expect(list.body.data.some((item: { title: string }) => item.title === 'Updated prime listing')).toBe(true);
+  });
+
+  it('persists the exact maintenance progress stage across landlord reloads', async () => {
+    await request(app).post('/api/v1/auth/register').send({
+      name: 'Stage Landlord',
+      email: 'stage.landlord@uiu.ac.bd',
+      password: 'StrongPass123!',
+      studentId: 'LAND-STAGE',
+      role: 'landlord',
+    });
+
+    const login = await request(app).post('/api/v1/auth/login').send({
+      email: 'stage.landlord@uiu.ac.bd',
+      password: 'StrongPass123!',
+    });
+    const token = login.body.token as string;
+    const landlordId = login.body.user.id as string;
+    seedFixtureMaintenanceRequest(landlordId, 'stage-request-1');
+
+    const updated = await request(app)
+      .patch('/api/v1/landlord/maintenance/stage-request-1/status')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ stage: 4 });
+
+    expect(updated.status).toBe(200);
+    expect(updated.body.data.stage).toBe(4);
+    expect(updated.body.data.status).toBe('in-progress');
+
+    const reloaded = await request(app)
+      .get('/api/v1/landlord/maintenance')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(reloaded.status).toBe(200);
+    expect(reloaded.body.data.find((item: { id: string }) => item.id === 'stage-request-1').stage).toBe(4);
   });
 
   it('allows a landlord to review an application and generate an active lease upon acceptance', async () => {

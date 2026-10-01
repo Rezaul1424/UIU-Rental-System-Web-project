@@ -20,7 +20,7 @@ export default function MaintenancePage({ myRequests, showNewReq, setShowNewReq,
   const MAINT_STAGES = ['Submitted', 'Under Review', 'Approved', 'Technician Assigned', 'In Progress', 'Completed', 'Closed'] as const
   const sColor = (s: number) => s >= 5 ? 'bg-emerald-500' : s >= 3 ? 'bg-sky-500' : s >= 1 ? 'bg-amber-500' : 'bg-gray-300'
   const sText = (s: number) => s >= 5 ? 'text-emerald-600' : s >= 3 ? 'text-sky-600' : s >= 1 ? 'text-amber-600' : 'text-gray-400'
-  const stageFor = (status: string) => status === 'resolved' ? 6 : status === 'in-progress' ? 2 : 0
+  const stageFor = (request: MaintenanceRequest) => request.stage ?? (request.status === 'resolved' ? 5 : request.status === 'in-progress' ? 3 : 1)
   const priorityColor: Record<string, string> = { Low: 'bg-gray-100 text-gray-600', Medium: 'bg-blue-50 text-blue-700', High: 'bg-amber-50 text-amber-700', Urgent: 'bg-red-50 text-red-700' }
   const photos: Record<number, { before: string; after: string | null }> = {
     1: { before: 'https://images.unsplash.com/photo-1585771724684-38269d6639fd?w=300&q=80', after: null },
@@ -66,7 +66,7 @@ export default function MaintenancePage({ myRequests, showNewReq, setShowNewReq,
             No maintenance requests submitted yet. Click "+ New Request" above if anything in your rental unit needs repair.
           </div>
         ) : myRequests.map(r => {
-          const stage = stageFor(r.status)
+          const stage = stageFor(r)
           const isExpanded = expandedMaintId === r.id
           const thread = maintChatThreads[r.id] ?? []
           const reqPhotos = photos[r.id]

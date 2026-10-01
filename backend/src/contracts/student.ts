@@ -62,6 +62,7 @@ export const StudentMaintenanceRequestSchema = z.object({
   description: z.string().trim().max(2000).optional(),
   priority: z.enum(['Low', 'Medium', 'High']),
   status: z.enum(['open', 'in-progress', 'resolved']),
+  stage: z.number().int().min(0).max(6).optional(),
   attachments: z.array(z.object({
     name: z.string().trim().min(1),
     type: z.string().trim().min(1).optional(),

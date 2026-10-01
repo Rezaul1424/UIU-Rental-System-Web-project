@@ -58,9 +58,12 @@ export const LandlordLeaseSummarySchema = z.object({
 
 export const MaintenanceUpdatePayloadSchema = z.object({
   requestId: z.string().trim().min(1),
-  status: z.enum(['open', 'in-progress', 'resolved']),
+  status: z.enum(['open', 'in-progress', 'resolved']).optional(),
+  stage: z.number().int().min(0).max(6).optional(),
   notes: z.string().trim().max(500).optional(),
   updatedAt: z.string().datetime({ offset: true }).optional(),
+}).refine((payload) => payload.status !== undefined || payload.stage !== undefined, {
+  message: 'Either status or stage is required',
 });
 
 export type LandlordProfile = z.infer<typeof LandlordProfileSchema>;

@@ -126,6 +126,7 @@ type MaintenanceRow = RowDataPacket & {
   description?: string | null;
   priority: 'Low' | 'Medium' | 'High';
   status: 'open' | 'in-progress' | 'resolved';
+  progress_stage: number;
   category?: string | null;
   created_at: Date;
   updated_at: Date;
@@ -345,6 +346,7 @@ export const studentRepository: StudentRepository = {
       employment: row.employment ?? 'Student',
       message: row.message ?? undefined,
       status: row.status,
+      stage: Number(row.progress_stage),
       createdAt: row.created_at.toISOString(),
     }));
   },
@@ -565,7 +567,7 @@ export const studentRepository: StudentRepository = {
     const userId = Number(studentId);
     if (!Number.isFinite(userId)) return [];
 
-    const [rows] = await db.query<MaintenanceRow[]>(`SELECT m.id, m.property_id, m.student_id, m.landlord_id, m.issue, m.description, m.priority, m.status, m.created_at, m.updated_at
+    const [rows] = await db.query<MaintenanceRow[]>(`SELECT m.id, m.property_id, m.student_id, m.landlord_id, m.issue, m.description, m.priority, m.status, m.progress_stage, m.created_at, m.updated_at
       FROM maintenance_requests m
       WHERE m.student_id = ?
       ORDER BY m.created_at DESC`, [userId]);
@@ -610,6 +612,7 @@ export const studentRepository: StudentRepository = {
         description: payload.description,
         priority: payload.priority,
         status: 'open',
+        stage: 1,
         attachments: payload.attachments,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -629,7 +632,7 @@ export const studentRepository: StudentRepository = {
       throw new AppError(400, 'INVALID_LANDLORD', 'The selected landlord does not own this property');
     }
 
-    const [result] = await db.execute('INSERT INTO maintenance_requests (property_id, student_id, landlord_id, issue, description, priority, status) VALUES (?, ?, ?, ?, ?, ?, ?)', [propertyId, userId, landlordId, payload.issue, payload.description ?? null, payload.priority, 'open']);
+    const [result] = await db.execute('INSERT INTO maintenance_requests (property_id, student_id, landlord_id, issue, description, priority, status, progress_stage) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [propertyId, userId, landlordId, payload.issue, payload.description ?? null, payload.priority, 'open', 1]);
     const insertId = Number((result as { insertId?: number }).insertId ?? 0);
 
     return {
@@ -641,6 +644,7 @@ export const studentRepository: StudentRepository = {
       description: payload.description,
       priority: payload.priority,
       status: 'open',
+      stage: 1,
       attachments: payload.attachments,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -729,7 +733,7 @@ export const studentRepository: StudentRepository = {
     if (!Number.isFinite(userId)) return [];
 
     const [rows] = await db.query<RowDataPacket[]>(
-      `SELECT r.id, r.property_id, r.student_id, r.landlord_id, r.landlord_stars, r.property_stars, r.comment, r.created_at,
+      `SELECT r.id, r.property_id, p.property_code, r.student_id, r.landlord_id, r.landlord_stars, r.property_stars, r.comment, r.created_at,
               p.title AS property_title, p.property_code, u.name AS landlord_name
        FROM reviews r
        JOIN properties p ON p.id = r.property_id
@@ -741,7 +745,7 @@ export const studentRepository: StudentRepository = {
 
     return rows.map((row) => ({
       id: Number(row.id),
-      propertyId: String(row.property_id),
+      propertyId: String(row.property_code || row.property_id),
       property: row.property_title || row.property_code,
       landlordId: String(row.landlord_id),
       landlord: row.landlord_name || 'Landlord',
@@ -758,11 +762,12 @@ export const studentRepository: StudentRepository = {
     if (!Number.isFinite(userId)) throw new AppError(400, 'INVALID_USER', 'Invalid student ID');
 
     if (useFixtures()) {
+      const listing = findTestListing(payload.propertyId);
       const review = {
         id: Date.now(),
-        propertyId: payload.propertyId,
+        propertyId: listing?.propertyCode || payload.propertyId,
         property: `Property ${payload.propertyId}`,
-        landlordId: payload.landlordId || '1',
+        landlordId: listing?.landlordId || payload.landlordId || '1',
         landlord: 'Landlord',
         landlordStars: payload.landlordStars,
         propStars: payload.propertyStars,
@@ -777,12 +782,11 @@ export const studentRepository: StudentRepository = {
     }
 
     const propId = await resolvePropertyId(payload.propertyId);
-    let landlordId = payload.landlordId ? Number(payload.landlordId) : NaN;
-    if (!Number.isFinite(landlordId)) {
-      const [propRows] = await db.query<RowDataPacket[]>('SELECT landlord_id FROM properties WHERE id = ? LIMIT 1', [propId]);
-      if (propRows[0]) landlordId = Number(propRows[0].landlord_id);
-    }
-    if (!Number.isFinite(landlordId)) landlordId = 1;
+    const [propertyRows] = await db.query<RowDataPacket[]>('SELECT landlord_id, title, property_code FROM properties WHERE id = ? LIMIT 1', [propId]);
+    const property = propertyRows[0];
+    if (!property) throw new AppError(404, 'LISTING_NOT_FOUND', 'Listing does not exist');
+    const landlordId = Number(property.landlord_id);
+    if (!Number.isFinite(landlordId)) throw new AppError(500, 'INVALID_LISTING_LANDLORD', 'The listing has no valid landlord');
 
     const [result] = await db.execute(
       `INSERT INTO reviews (property_id, student_id, landlord_id, landlord_stars, property_stars, comment)
@@ -791,13 +795,12 @@ export const studentRepository: StudentRepository = {
     );
     const insertId = Number((result as { insertId?: number }).insertId ?? Date.now());
 
-    const [propRows] = await db.query<RowDataPacket[]>('SELECT title, property_code FROM properties WHERE id = ? LIMIT 1', [propId]);
     const [userRows] = await db.query<RowDataPacket[]>('SELECT name FROM users WHERE id = ? LIMIT 1', [landlordId]);
 
     return {
       id: insertId,
-      propertyId: String(propId),
-      property: propRows[0]?.title || propRows[0]?.property_code || `Property ${propId}`,
+      propertyId: String(property.property_code || propId),
+      property: property.title || property.property_code || `Property ${propId}`,
       landlordId: String(landlordId),
       landlord: userRows[0]?.name || 'Landlord',
       landlordStars: payload.landlordStars,

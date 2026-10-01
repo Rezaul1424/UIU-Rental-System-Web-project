@@ -112,6 +112,7 @@ export type LandlordMaintenanceRequest = {
   description?: string;
   priority: 'Low' | 'Medium' | 'High';
   status: 'open' | 'in-progress' | 'resolved';
+  stage: number;
   category?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -176,6 +177,7 @@ export const getMaintenanceRequests = async (): Promise<LandlordMaintenanceReque
     description: request.description,
     priority: ['Low', 'Medium', 'High'].includes(String(request.priority)) ? request.priority : 'Medium',
     status: ['open', 'in-progress', 'resolved'].includes(String(request.status)) ? request.status : 'open',
+    stage: Number(request.stage ?? (request.status === 'resolved' ? 5 : request.status === 'in-progress' ? 3 : 1)),
     category: request.category,
     createdAt: request.createdAt ?? request.created_at,
     updatedAt: request.updatedAt ?? request.updated_at,
@@ -184,7 +186,7 @@ export const getMaintenanceRequests = async (): Promise<LandlordMaintenanceReque
 
 export const reviewApplication = async (applicationId: string | number, payload: { status: string; decisionNotes?: string }) => api.patch(`/api/v1/landlord/applications/${applicationId}/status`, payload);
 
-export const updateMaintenanceStatus = async (requestId: string | number, payload: { status: 'open' | 'in-progress' | 'resolved'; notes?: string; updatedAt?: string }) =>
+export const updateMaintenanceStatus = async (requestId: string | number, payload: { stage: number; status: 'open' | 'in-progress' | 'resolved'; notes?: string; updatedAt?: string }) =>
   api.patch(`/api/v1/landlord/maintenance/${requestId}/status`, payload);
 
 export const deleteListing = async (listingId: string | number) => api.delete(`/api/v1/landlord/listings/${listingId}`);
