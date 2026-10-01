@@ -3,12 +3,12 @@
 
 INSERT INTO `users` (`id`, `role`, `name`, `email`, `password_hash`, `status`, `is_verified`)
 VALUES
-  (7, 'landlord', 'Pending Landlord', 'pending-landlord@example.test', '$2a$10$f6f.vGvXhY1lX8LwH2eQkOG1N42i5T10d18.M96wZc.12h4q2wK1G', 'pending', FALSE),
-  (8, 'landlord', 'Suspended Landlord', 'suspended-landlord@example.test', '$2a$10$f6f.vGvXhY1lX8LwH2eQkOG1N42i5T10d18.M96wZc.12h4q2wK1G', 'suspended', TRUE),
-  (9, 'student', 'Pending Student', 'pending-student@example.test', '$2a$10$f6f.vGvXhY1lX8LwH2eQkOG1N42i5T10d18.M96wZc.12h4q2wK1G', 'pending', FALSE),
-  (10, 'student', 'Suspended Student', 'suspended-student@example.test', '$2a$10$f6f.vGvXhY1lX8LwH2eQkOG1N42i5T10d18.M96wZc.12h4q2wK1G', 'suspended', TRUE)
+  (7, 'landlord', 'Pending Landlord', 'pending-landlord@example.test', '$2a$10$H/1XcWSZklIZXfO82Id6CeLkQkPo2k9OKFU4AGQmQKGdLZTVngeJa', 'pending', FALSE),
+  (8, 'landlord', 'Suspended Landlord', 'suspended-landlord@example.test', '$2a$10$H/1XcWSZklIZXfO82Id6CeLkQkPo2k9OKFU4AGQmQKGdLZTVngeJa', 'suspended', TRUE),
+  (9, 'student', 'Pending Student', 'pending-student@example.test', '$2a$10$H/1XcWSZklIZXfO82Id6CeLkQkPo2k9OKFU4AGQmQKGdLZTVngeJa', 'pending', FALSE),
+  (10, 'student', 'Suspended Student', 'suspended-student@example.test', '$2a$10$H/1XcWSZklIZXfO82Id6CeLkQkPo2k9OKFU4AGQmQKGdLZTVngeJa', 'suspended', TRUE)
 ON DUPLICATE KEY UPDATE
-  `role` = VALUES(`role`), `status` = VALUES(`status`), `is_verified` = VALUES(`is_verified`);
+  `role` = VALUES(`role`), `password_hash` = VALUES(`password_hash`), `status` = VALUES(`status`), `is_verified` = VALUES(`is_verified`);
 
 INSERT INTO `properties` (`id`, `property_code`, `landlord_id`, `title`, `description`, `type`, `price`, `distance_km`, `status`, `total_size_sqft`, `roommate_capacity`, `bedroom_count`, `bathroom_count`, `kitchen_count`, `address_area`)
 VALUES (4, 'UIU-1004', 2, 'Occupied Campus Apartment', 'Development fixture for occupancy and lease tests.', 'Single', 5000.00, 0.45, 'occupied', 350, 1, 1, 1, 1, 'North Campus')

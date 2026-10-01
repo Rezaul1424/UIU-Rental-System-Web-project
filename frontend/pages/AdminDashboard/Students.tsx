@@ -7,8 +7,8 @@ type StudentsPageProps = {
   sRows: StudentRow[]
   sSearch: string
   setSSearch: React.Dispatch<React.SetStateAction<string>>
-  sFilter: 'all' | 'active' | 'pending' | 'suspended'
-  setSFilter: React.Dispatch<React.SetStateAction<'all' | 'active' | 'pending' | 'suspended'>>
+  sFilter: 'all' | 'active' | 'pending' | 'suspended' | 'deactivated'
+  setSFilter: React.Dispatch<React.SetStateAction<'all' | 'active' | 'pending' | 'suspended' | 'deactivated'>>
   sSortKey: keyof StudentRow
   sSortDir: SortDir
   handleSSort: (key: keyof StudentRow) => void
@@ -47,7 +47,7 @@ export default function StudentsPage({ sRows, sSearch, setSSearch, sFilter, setS
               className="flex-1 min-w-48 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#1a1a18]"
             />
             <div className="flex gap-1">
-              {(['all', 'active', 'pending', 'suspended'] as const).map(f => (
+              {(['all', 'active', 'pending', 'suspended', 'deactivated'] as const).map(f => (
                 <button key={f} onClick={() => { setSFilter(f); setSPage(1) }} className={`text-xs px-3 py-1.5 rounded-full border font-medium capitalize transition-all ${sFilter === f ? 'bg-[#111827] text-white border-[#111827]' : 'bg-white text-gray-500 border-gray-200 hover:border-[#111827]'}`}>
                   {f}
                 </button>
@@ -146,7 +146,7 @@ export default function StudentsPage({ sRows, sSearch, setSSearch, sFilter, setS
                   {sProfile.status === 'pending' && <button onClick={() => approveStudentRow(sProfile.id)} className="text-xs bg-[#111827] text-white px-4 py-2 rounded-xl hover:bg-[#1f2937] font-semibold transition-colors">Approve Account</button>}
                   {sProfile.status === 'active' && <button onClick={() => suspendStudentRow(sProfile.id)} className="text-xs border border-amber-300 text-amber-700 px-4 py-2 rounded-xl hover:bg-amber-50 font-semibold transition-colors">Suspend Account</button>}
                   {sProfile.status === 'suspended' && <button onClick={() => approveStudentRow(sProfile.id)} className="text-xs bg-emerald-600 text-white px-4 py-2 rounded-xl hover:bg-emerald-700 font-semibold transition-colors">Reinstate Account</button>}
-                  <button onClick={() => removeStudentRow(sProfile.id)} className="text-xs border border-red-300 text-red-600 px-4 py-2 rounded-xl hover:bg-red-50 font-semibold transition-colors">Remove Account</button>
+                  {sProfile.status !== 'deactivated' && <button onClick={() => removeStudentRow(sProfile.id)} className="text-xs border border-red-300 text-red-600 px-4 py-2 rounded-xl hover:bg-red-50 font-semibold transition-colors">Deactivate Account</button>}
                 </div>
               </div>
             </div>

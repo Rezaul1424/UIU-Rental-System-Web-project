@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Listing } from '../../types'
-import { listings, maintenanceRequests, EXT_LANDLORDS, EXT_STUDENTS } from '../../data'
+import { listings, maintenanceRequests } from '../../data'
 import type { LandlordRow, StudentRow, SortDir } from '../../data'
+import { fetchAdminAccounts, setAdminAccountStatus, type AdminAccount, type AdminAccountStatus } from '../../api/admin'
 import ListingDetailPage from '../../components/ListingDetail'
 import NotificationBell from '../../components/NotificationBell'
 import { adminNotifs } from './constants'
@@ -15,6 +16,38 @@ import ChatMonitorPage from './ChatMonitor'
 import ComplaintsPage from './Complaints'
 import SettingsPage from './Settings'
 import type { AdminComplaint, AdminComplaintThreadMessage, AdminChatConversation } from './types'
+
+function registrationDate(value?: string): string {
+  return value ? new Date(value).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
+}
+
+function toLandlordRow(account: AdminAccount): LandlordRow {
+  return {
+    id: account.id,
+    name: account.name,
+    email: account.email,
+    phone: '—',
+    address: '—',
+    properties: account.propertyCount ?? 0,
+    status: account.status,
+    regDate: registrationDate(account.createdAt),
+  }
+}
+
+function toStudentRow(account: AdminAccount): StudentRow {
+  const applicationCount = account.applicationCount ?? 0
+  return {
+    id: account.id,
+    name: account.name,
+    university: 'UIU',
+    email: account.email,
+    phone: '—',
+    rentalStatus: applicationCount > 0 ? 'Searching' : 'No Application',
+    applications: applicationCount,
+    status: account.status,
+    regDate: registrationDate(account.createdAt),
+  }
+}
 
 export default function AdminDashboard({ userName, onSignOut }: { userName: string; onSignOut: () => void }) {
   const [page, setPage] = useState<AdminPage>('overview')
@@ -51,9 +84,9 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
   const [catSearch, setCatSearch] = useState('')
   const [catSort, setCatSort] = useState<'title' | 'price' | 'status'>('title')
 
-  const [lRows, setLRows] = useState<LandlordRow[]>(EXT_LANDLORDS)
+  const [lRows, setLRows] = useState<LandlordRow[]>([])
   const [lSearch, setLSearch] = useState('')
-  const [lFilter, setLFilter] = useState<'all' | 'active' | 'pending' | 'suspended'>('all')
+  const [lFilter, setLFilter] = useState<'all' | 'active' | 'pending' | 'suspended' | 'deactivated'>('all')
   const [lSortKey, setLSortKey] = useState<keyof LandlordRow>('name')
   const [lSortDir, setLSortDir] = useState<SortDir>('asc')
   const [lPage, setLPage] = useState(1)
@@ -79,13 +112,50 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
   const lPagedRows = lSorted.slice((lPage - 1) * L_PAGE, lPage * L_PAGE)
   const lProfile = lRows.find(r => r.id === lProfileId)
 
-  const approveLandlordRow = (id: string) => setLRows(rs => rs.map(r => r.id === id ? { ...r, status: 'active' } : r))
-  const suspendLandlordRow = (id: string) => setLRows(rs => rs.map(r => r.id === id ? { ...r, status: 'suspended' } : r))
-  const removeLandlordRow = (id: string) => { setLRows(rs => rs.filter(r => r.id !== id)); setLProfileId(null) }
+  const [adminError, setAdminError] = useState('')
+  const [isLoadingAccounts, setIsLoadingAccounts] = useState(true)
 
-  const [sRows, setSRows] = useState<StudentRow[]>(EXT_STUDENTS)
+  useEffect(() => {
+    let mounted = true
+    Promise.all([fetchAdminAccounts('landlord'), fetchAdminAccounts('student')])
+      .then(([landlords, students]) => {
+        if (!mounted) return
+        setLRows(landlords.map(toLandlordRow))
+        setSRows(students.map(toStudentRow))
+      })
+      .catch((error: unknown) => {
+        if (mounted) setAdminError(error instanceof Error ? error.message : 'Could not load administrator data.')
+      })
+      .finally(() => {
+        if (mounted) setIsLoadingAccounts(false)
+      })
+    return () => { mounted = false }
+  }, [])
+
+  const changeAccountStatus = async (id: string, status: AdminAccountStatus) => {
+    const reason = window.prompt(`Enter a reason for changing this account to ${status}:`)
+    if (reason === null) return
+    if (reason.trim().length < 3) {
+      setAdminError('Please provide a reason with at least 3 characters.')
+      return
+    }
+    setAdminError('')
+    try {
+      const account = await setAdminAccountStatus(id, status, reason.trim())
+      setLRows(rows => rows.map(row => row.id === id ? { ...row, status: account.status } : row))
+      setSRows(rows => rows.map(row => row.id === id ? { ...row, status: account.status } : row))
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : 'Could not update this account.')
+    }
+  }
+
+  const approveLandlordRow = (id: string) => changeAccountStatus(id, 'active')
+  const suspendLandlordRow = (id: string) => changeAccountStatus(id, 'suspended')
+  const removeLandlordRow = (id: string) => changeAccountStatus(id, 'deactivated')
+
+  const [sRows, setSRows] = useState<StudentRow[]>([])
   const [sSearch, setSSearch] = useState('')
-  const [sFilter, setSFilter] = useState<'all' | 'active' | 'pending' | 'suspended'>('all')
+  const [sFilter, setSFilter] = useState<'all' | 'active' | 'pending' | 'suspended' | 'deactivated'>('all')
   const [sSortKey, setSSortKey] = useState<keyof StudentRow>('name')
   const [sSortDir, setSSortDir] = useState<SortDir>('asc')
   const [sPage, setSPage] = useState(1)
@@ -111,9 +181,9 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
   const sPagedRows = sSorted.slice((sPage - 1) * S_PAGE, sPage * S_PAGE)
   const sProfile = sRows.find(r => r.id === sProfileId)
 
-  const approveStudentRow = (id: string) => setSRows(rs => rs.map(r => r.id === id ? { ...r, status: 'active' } : r))
-  const suspendStudentRow = (id: string) => setSRows(rs => rs.map(r => r.id === id ? { ...r, status: 'suspended' } : r))
-  const removeStudentRow = (id: string) => { setSRows(rs => rs.filter(r => r.id !== id)); setSProfileId(null) }
+  const approveStudentRow = (id: string) => changeAccountStatus(id, 'active')
+  const suspendStudentRow = (id: string) => changeAccountStatus(id, 'suspended')
+  const removeStudentRow = (id: string) => changeAccountStatus(id, 'deactivated')
 
   const pendingLandlords = lRows.filter(r => r.status === 'pending').length
   const pendingStudents = sRows.filter(r => r.status === 'pending').length
@@ -149,6 +219,8 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
         </div>
 
         <div className="px-6 pb-6 max-w-6xl mx-auto space-y-6">
+          {adminError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{adminError}</div>}
+          {isLoadingAccounts && <div role="status" className="rounded-xl bg-white px-4 py-3 text-sm text-gray-500">Loading users from the database…</div>}
           {page === 'overview' && (
             <OverviewPage
               listings={listings}

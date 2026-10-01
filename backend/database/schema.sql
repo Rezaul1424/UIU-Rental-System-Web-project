@@ -368,12 +368,12 @@ ON DUPLICATE KEY UPDATE `name`=VALUES(`name`);
 -- 2. Seed Users
 -- Passwords below are hashed for 'password123' via bcrypt
 INSERT INTO `users` (`id`, `role`, `name`, `email`, `password_hash`, `phone`, `student_id`, `department`, `status`, `is_verified`) VALUES
-  (1, 'admin', 'Admin User', 'admin@uiu.ac.bd', '$2a$10$f6f.vGvXhY1lX8LwH2eQkOG1N42i5T10d18.M96wZc.12h4q2wK1G', '+8801700000001', NULL, 'Administration', 'active', TRUE),
-  (2, 'landlord', 'Rahman Faruk', 'faruk@example.com', '$2a$10$f6f.vGvXhY1lX8LwH2eQkOG1N42i5T10d18.M96wZc.12h4q2wK1G', '+8801711122233', NULL, NULL, 'active', TRUE),
-  (3, 'landlord', 'Nusrat Jahan', 'nusrat@example.com', '$2a$10$f6f.vGvXhY1lX8LwH2eQkOG1N42i5T10d18.M96wZc.12h4q2wK1G', '+8801711122234', NULL, NULL, 'active', TRUE),
-  (4, 'landlord', 'Karim Abdullah', 'karim@example.com', '$2a$10$f6f.vGvXhY1lX8LwH2eQkOG1N42i5T10d18.M96wZc.12h4q2wK1G', '+8801711122235', NULL, NULL, 'active', TRUE),
-  (5, 'student', 'Tanvir Ahmed', 'tanvir@uiu.ac.bd', '$2a$10$f6f.vGvXhY1lX8LwH2eQkOG1N42i5T10d18.M96wZc.12h4q2wK1G', '+8801811223344', '011211001', 'CSE', 'active', TRUE),
-  (6, 'student', 'Sadia Islam', 'sadia@uiu.ac.bd', '$2a$10$f6f.vGvXhY1lX8LwH2eQkOG1N42i5T10d18.M96wZc.12h4q2wK1G', '+8801811223345', '011211002', 'BBA', 'active', TRUE)
+  (1, 'admin', 'Admin User', 'admin@uiu.ac.bd', '$2a$10$H/1XcWSZklIZXfO82Id6CeLkQkPo2k9OKFU4AGQmQKGdLZTVngeJa', '+8801700000001', NULL, 'Administration', 'active', TRUE),
+  (2, 'landlord', 'Rahman Faruk', 'faruk@example.com', '$2a$10$H/1XcWSZklIZXfO82Id6CeLkQkPo2k9OKFU4AGQmQKGdLZTVngeJa', '+8801711122233', NULL, NULL, 'active', TRUE),
+  (3, 'landlord', 'Nusrat Jahan', 'nusrat@example.com', '$2a$10$H/1XcWSZklIZXfO82Id6CeLkQkPo2k9OKFU4AGQmQKGdLZTVngeJa', '+8801711122234', NULL, NULL, 'active', TRUE),
+  (4, 'landlord', 'Karim Abdullah', 'karim@example.com', '$2a$10$H/1XcWSZklIZXfO82Id6CeLkQkPo2k9OKFU4AGQmQKGdLZTVngeJa', '+8801711122235', NULL, NULL, 'active', TRUE),
+  (5, 'student', 'Tanvir Ahmed', 'tanvir@uiu.ac.bd', '$2a$10$H/1XcWSZklIZXfO82Id6CeLkQkPo2k9OKFU4AGQmQKGdLZTVngeJa', '+8801811223344', '011211001', 'CSE', 'active', TRUE),
+  (6, 'student', 'Sadia Islam', 'sadia@uiu.ac.bd', '$2a$10$H/1XcWSZklIZXfO82Id6CeLkQkPo2k9OKFU4AGQmQKGdLZTVngeJa', '+8801811223345', '011211002', 'BBA', 'active', TRUE)
 ON DUPLICATE KEY UPDATE `email`=VALUES(`email`);
 
 -- 3. Seed Properties
