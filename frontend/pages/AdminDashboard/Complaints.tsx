@@ -1,20 +1,33 @@
-import type { AdminComplaint, AdminComplaintThreadMessage } from './types'
+import type { AdminComplaint } from './types'
+import type { AdminComplaintStatus } from '../../api/admin'
 
 type ComplaintsPageProps = {
   adminComplaints: AdminComplaint[]
+  isLoading: boolean
+  error: string
+  onRetry: () => void
+  onSelectComplaint: (complaint: AdminComplaint) => void
+  onStatusChange: (id: string, status: AdminComplaintStatus) => void
+  onSendReply: (id: string, message: string) => Promise<void>
   selectedComplaint: AdminComplaint | null
   setSelectedComplaint: React.Dispatch<React.SetStateAction<AdminComplaint | null>>
   complaintReply: string
   setComplaintReply: React.Dispatch<React.SetStateAction<string>>
-  complaintThreads: Record<string, AdminComplaintThreadMessage[]>
-  setComplaintThreads: React.Dispatch<React.SetStateAction<Record<string, AdminComplaintThreadMessage[]>>>
   cStatusFilter: 'all' | 'Submitted' | 'Under Review' | 'Responded' | 'Resolved' | 'Closed'
   setCStatusFilter: React.Dispatch<React.SetStateAction<'all' | 'Submitted' | 'Under Review' | 'Responded' | 'Resolved' | 'Closed'>>
   cSearch: string
   setCSearch: React.Dispatch<React.SetStateAction<string>>
 }
 
-export default function ComplaintsPage({ adminComplaints, selectedComplaint, setSelectedComplaint, complaintReply, setComplaintReply, complaintThreads, setComplaintThreads, cStatusFilter, setCStatusFilter, cSearch, setCSearch }: ComplaintsPageProps) {
+export default function ComplaintsPage({ adminComplaints, isLoading, error, onRetry, onSelectComplaint, onStatusChange, onSendReply, selectedComplaint, setSelectedComplaint, complaintReply, setComplaintReply, cStatusFilter, setCStatusFilter, cSearch, setCSearch }: ComplaintsPageProps) {
+  const formatDate = (value: string) => new Date(value).toLocaleDateString()
+  const sendReply = () => {
+    const message = complaintReply.trim()
+    if (!message || !selectedComplaint) return
+    void onSendReply(selectedComplaint.id, message)
+      .then(() => setComplaintReply(''))
+      .catch(() => {})
+  }
   return (
     <>
       <div className="flex items-end justify-between">
@@ -36,15 +49,11 @@ export default function ComplaintsPage({ adminComplaints, selectedComplaint, set
                 </div>
                 <h2 className="text-lg font-bold text-[#111827]">{selectedComplaint.category}</h2>
                 <div className="text-sm text-gray-500 mt-1">From <strong>{selectedComplaint.from}</strong> ({selectedComplaint.fromType}) against <strong>{selectedComplaint.against}</strong></div>
-                <div className="text-xs text-gray-400 mt-1">{selectedComplaint.property} · {selectedComplaint.date}</div>
+                <div className="text-xs text-gray-400 mt-1">{selectedComplaint.property} · {formatDate(selectedComplaint.createdAt)}</div>
               </div>
               <select
                 value={selectedComplaint.status}
-                onChange={e => {
-                  const newStatus = e.target.value as AdminComplaint['status']
-                  setSelectedComplaint(c => c ? { ...c, status: newStatus } : c)
-                  setComplaintThreads(t => ({ ...t }))
-                }}
+                onChange={e => onStatusChange(selectedComplaint.id, e.target.value as AdminComplaintStatus)}
                 className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#1a1a18] bg-white"
               >
                 {['Submitted', 'Under Review', 'Responded', 'Resolved', 'Closed'].map(s => <option key={s}>{s}</option>)}
@@ -57,15 +66,15 @@ export default function ComplaintsPage({ adminComplaints, selectedComplaint, set
             <div className="border-t border-gray-100 pt-4">
               <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Communication Thread</div>
               <div className="space-y-3 mb-4 max-h-64 overflow-y-auto">
-                {(complaintThreads[selectedComplaint.id] ?? []).length === 0 ? (
+                {selectedComplaint.messages.length === 0 ? (
                   <div className="text-sm text-gray-400 text-center py-4">No messages yet</div>
                 ) : (
-                  (complaintThreads[selectedComplaint.id] ?? []).map((msg, i) => (
-                    <div key={i} className={`flex gap-3 ${msg.from === 'Admin' ? 'flex-row-reverse' : ''}`}>
-                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${msg.from === 'Admin' ? 'bg-[#111827] text-white' : 'bg-gray-200 text-gray-600'}`}>{msg.from[0]}</div>
-                      <div className={`max-w-[70%] ${msg.from === 'Admin' ? 'items-end' : 'items-start'} flex flex-col`}>
-                        <div className={`px-4 py-2.5 rounded-2xl text-sm ${msg.from === 'Admin' ? 'bg-[#111827] text-white rounded-tr-sm' : 'bg-gray-100 text-[#1a1a18] rounded-tl-sm'}`}>{msg.text}</div>
-                        <div className="text-[10px] text-gray-400 mt-1">{msg.from} · {msg.date}</div>
+                  selectedComplaint.messages.map(msg => (
+                    <div key={msg.id} className={`flex gap-3 ${msg.isAdmin ? 'flex-row-reverse' : ''}`}>
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${msg.isAdmin ? 'bg-[#111827] text-white' : 'bg-gray-200 text-gray-600'}`}>{msg.from[0]}</div>
+                      <div className={`max-w-[70%] ${msg.isAdmin ? 'items-end' : 'items-start'} flex flex-col`}>
+                        <div className={`px-4 py-2.5 rounded-2xl text-sm ${msg.isAdmin ? 'bg-[#111827] text-white rounded-tr-sm' : 'bg-gray-100 text-[#1a1a18] rounded-tl-sm'}`}>{msg.text}</div>
+                        <div className="text-[10px] text-gray-400 mt-1">{msg.from} · {formatDate(msg.createdAt)}</div>
                       </div>
                     </div>
                   ))
@@ -76,20 +85,13 @@ export default function ComplaintsPage({ adminComplaints, selectedComplaint, set
                   value={complaintReply}
                   onChange={e => setComplaintReply(e.target.value)}
                   onKeyDown={e => {
-                    if (e.key === 'Enter' && complaintReply.trim()) {
-                      setComplaintThreads(t => ({ ...t, [selectedComplaint.id]: [...(t[selectedComplaint.id] ?? []), { from: 'Admin', text: complaintReply.trim(), date: '31 Jul 2026' }] }))
-                      setComplaintReply('')
-                    }
+                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply() }
                   }}
                   placeholder="Type a response…"
                   className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#1a1a18]"
                 />
                 <button
-                  onClick={() => {
-                    if (!complaintReply.trim()) return
-                    setComplaintThreads(t => ({ ...t, [selectedComplaint.id]: [...(t[selectedComplaint.id] ?? []), { from: 'Admin', text: complaintReply.trim(), date: '31 Jul 2026' }] }))
-                    setComplaintReply('')
-                  }}
+                  onClick={sendReply}
                   className="bg-[#111827] text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-[#1f2937] transition-colors"
                 >Send</button>
               </div>
@@ -118,6 +120,8 @@ export default function ComplaintsPage({ adminComplaints, selectedComplaint, set
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
+                {isLoading && <tr><td colSpan={8} className="px-5 py-8 text-center text-sm text-gray-500">Loading complaints…</td></tr>}
+                {!isLoading && adminComplaints.length === 0 && <tr><td colSpan={8} className="px-5 py-8 text-center text-sm text-gray-400">No complaints found.</td></tr>}
               {adminComplaints
                 .filter(c => cStatusFilter === 'all' || c.status === cStatusFilter)
                 .filter(c => !cSearch || c.from.toLowerCase().includes(cSearch.toLowerCase()) || c.against.toLowerCase().includes(cSearch.toLowerCase()) || c.category.toLowerCase().includes(cSearch.toLowerCase()))
@@ -131,17 +135,18 @@ export default function ComplaintsPage({ adminComplaints, selectedComplaint, set
                     <td className="px-5 py-3 text-gray-600">{c.against}</td>
                     <td className="px-5 py-3 text-gray-600">{c.category}</td>
                     <td className="px-5 py-3 text-gray-400 text-xs max-w-[150px] truncate">{c.property}</td>
-                    <td className="px-5 py-3 text-gray-400 text-xs">{c.date}</td>
+                    <td className="px-5 py-3 text-gray-400 text-xs">{formatDate(c.createdAt)}</td>
                     <td className="px-5 py-3">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${c.status === 'Resolved' || c.status === 'Closed' ? 'bg-emerald-50 text-emerald-700' : c.status === 'Responded' ? 'bg-sky-50 text-sky-700' : c.status === 'Under Review' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>{c.status}</span>
                     </td>
                     <td className="px-5 py-3">
-                      <button onClick={() => setSelectedComplaint(c)} className="text-xs font-semibold text-[#111827] hover:underline">View</button>
+                      <button onClick={() => onSelectComplaint(c)} className="text-xs font-semibold text-[#111827] hover:underline">View</button>
                     </td>
                   </tr>
                 ))}
             </tbody>
           </table>
+          {error && <div role="alert" className="flex items-center justify-between gap-3 border-t border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700"><span>{error}</span><button onClick={onRetry} className="font-semibold underline">Retry</button></div>}
         </div>
       )}
     </>

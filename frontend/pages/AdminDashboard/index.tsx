@@ -6,16 +6,21 @@ import {
   createAdminCategory,
   deleteAdminCategory,
   fetchAdminAccounts,
+  fetchAdminComplaint,
+  fetchAdminComplaints,
   fetchAdminCategories,
   fetchAdminListings,
   fetchAdminReportData,
   renameAdminCategory,
+  replyToAdminComplaint,
   setAdminAccountStatus,
   setAdminListingCategory,
   setAdminListingModerationStatus,
+  updateAdminComplaintStatus,
   type AdminAccount,
   type AdminAccountStatus,
   type AdminCategory,
+  type AdminComplaintStatus,
   type AdminListing,
   type AdminModerationStatus,
   type AdminReportData,
@@ -32,7 +37,7 @@ import ReportsPage from './Reports'
 import ChatMonitorPage from './ChatMonitor'
 import ComplaintsPage from './Complaints'
 import SettingsPage from './Settings'
-import type { AdminComplaint, AdminComplaintThreadMessage, AdminChatConversation } from './types'
+import type { AdminComplaint, AdminChatConversation } from './types'
 
 function registrationDate(value?: string): string {
   return value ? new Date(value).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
@@ -93,17 +98,12 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
   const [adminListings, setAdminListings] = useState<AdminListing[]>([])
   const [newCat, setNewCat] = useState('')
 
-  const [adminComplaints] = useState<AdminComplaint[]>([
-    { id: 'CMP-001', from: 'Tanvir Ahmed', fromType: 'Student', against: 'Rahman Faruk', property: 'Studio near Gate 3', category: 'Maintenance Neglect', date: '22 Jul 2026', status: 'Under Review', description: 'Reported the AC issue on July 10th but no response received from the landlord.' },
-    { id: 'CMP-002', from: 'Rahman Faruk', fromType: 'Landlord', against: 'Sadia Islam', property: 'Shared Mess – South Campus', category: 'Late Payment', date: '18 Jul 2026', status: 'Submitted', description: 'Rent for July 2026 has not been paid despite multiple reminders.' },
-    { id: 'CMP-003', from: 'Sadia Islam', fromType: 'Student', against: 'Nusrat Jahan', property: 'Shared Mess – South Campus', category: 'Privacy Violation', date: '10 Jul 2026', status: 'Responded', description: 'Landlord entered the room without prior notice on multiple occasions.' },
-  ])
+  const [adminComplaints, setAdminComplaints] = useState<AdminComplaint[]>([])
   const [selectedComplaint, setSelectedComplaint] = useState<AdminComplaint | null>(null)
   const [complaintReply, setComplaintReply] = useState('')
-  const [complaintThreads, setComplaintThreads] = useState<Record<string, AdminComplaintThreadMessage[]>>({
-    'CMP-001': [{ from: 'Admin', text: 'We have received your complaint and are reviewing it.', date: '23 Jul 2026' }],
-    'CMP-003': [{ from: 'Admin', text: 'We have contacted the landlord regarding this matter.', date: '11 Jul 2026' }, { from: 'Sadia Islam', text: 'Thank you for the quick response.', date: '11 Jul 2026' }],
-  })
+  const [complaintsError, setComplaintsError] = useState('')
+  const [isLoadingComplaints, setIsLoadingComplaints] = useState(false)
+  const [complaintsRetry, setComplaintsRetry] = useState(0)
   const [cStatusFilter, setCStatusFilter] = useState<'all' | 'Submitted' | 'Under Review' | 'Responded' | 'Resolved' | 'Closed'>('all')
   const [cSearch, setCSearch] = useState('')
 
@@ -191,6 +191,52 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
       .finally(() => { if (mounted) setIsLoadingReports(false) })
     return () => { mounted = false }
   }, [page, reportsRetry])
+
+  useEffect(() => {
+    if (page !== 'complaints') return
+    let mounted = true
+    setIsLoadingComplaints(true)
+    setComplaintsError('')
+    fetchAdminComplaints()
+      .then(data => { if (mounted) setAdminComplaints(data) })
+      .catch((error: unknown) => {
+        if (mounted) setComplaintsError(error instanceof Error ? error.message : 'Could not load complaints.')
+      })
+      .finally(() => { if (mounted) setIsLoadingComplaints(false) })
+    return () => { mounted = false }
+  }, [page, complaintsRetry])
+
+  const selectComplaint = async (complaint: AdminComplaint) => {
+    try {
+      setComplaintsError('')
+      setSelectedComplaint(await fetchAdminComplaint(complaint.id))
+    } catch (error) {
+      setComplaintsError(error instanceof Error ? error.message : 'Could not load the complaint thread.')
+    }
+  }
+
+  const changeComplaintStatus = async (id: string, status: AdminComplaintStatus) => {
+    try {
+      setComplaintsError('')
+      const updated = await updateAdminComplaintStatus(id, status)
+      setAdminComplaints(items => items.map(item => item.id === id ? updated : item))
+      setSelectedComplaint(current => current?.id === id ? updated : current)
+    } catch (error) {
+      setComplaintsError(error instanceof Error ? error.message : 'Could not update the complaint status.')
+    }
+  }
+
+  const sendComplaintReply = async (id: string, message: string) => {
+    try {
+      setComplaintsError('')
+      const updated = await replyToAdminComplaint(id, message)
+      setAdminComplaints(items => items.map(item => item.id === id ? updated : item))
+      setSelectedComplaint(updated)
+    } catch (error) {
+      setComplaintsError(error instanceof Error ? error.message : 'Could not send the complaint reply.')
+      throw error
+    }
+  }
 
   const changeAccountStatus = async (id: string, status: AdminAccountStatus) => {
     const reason = window.prompt(`Enter a reason for changing this account to ${status}:`)
@@ -447,12 +493,16 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
           {page === 'complaints' && (
             <ComplaintsPage
               adminComplaints={adminComplaints}
+              isLoading={isLoadingComplaints}
+              error={complaintsError}
+              onRetry={() => setComplaintsRetry(value => value + 1)}
+              onSelectComplaint={selectComplaint}
+              onStatusChange={changeComplaintStatus}
+              onSendReply={sendComplaintReply}
               selectedComplaint={selectedComplaint}
               setSelectedComplaint={setSelectedComplaint}
               complaintReply={complaintReply}
               setComplaintReply={setComplaintReply}
-              complaintThreads={complaintThreads}
-              setComplaintThreads={setComplaintThreads}
               cStatusFilter={cStatusFilter}
               setCStatusFilter={setCStatusFilter}
               cSearch={cSearch}

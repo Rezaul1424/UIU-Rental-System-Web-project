@@ -1,23 +1,4 @@
-import type { Listing } from '../../types'
-import type { LandlordRow, StudentRow } from '../../data'
-
-export type AdminComplaint = {
-  id: string
-  from: string
-  fromType: 'Student' | 'Landlord'
-  against: string
-  property: string
-  category: string
-  date: string
-  status: 'Submitted' | 'Under Review' | 'Responded' | 'Resolved' | 'Closed'
-  description: string
-}
-
-export type AdminComplaintThreadMessage = {
-  from: string
-  text: string
-  date: string
-}
+export type { AdminComplaint } from '../../api/admin'
 
 export type AdminChatMessage = {
   from: 'student' | 'landlord'
@@ -34,14 +15,4 @@ export type AdminChatConversation = {
   lastMsg: string
   status: 'Active' | 'Inactive'
   msgs: AdminChatMessage[]
-}
-
-export type AdminOverviewProps = {
-  listings: Listing[]
-  lRows: LandlordRow[]
-  sRows: StudentRow[]
-  pendingLandlords: number
-  pendingStudents: number
-  setPage: (page: import('./Sidebar').AdminPage) => void
-  openAdminListing: (listing: Listing) => void
 }

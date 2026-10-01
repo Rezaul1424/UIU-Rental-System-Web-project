@@ -52,6 +52,21 @@ export type AdminReportData = {
   maintenanceRequests: { id: number; property: string; tenant: string; issue: string; createdAt: string; status: string }[]
 }
 
+export type AdminComplaintStatus = 'Submitted' | 'Under Review' | 'Responded' | 'Resolved' | 'Closed'
+export type AdminComplaintMessage = { id: string; from: string; isAdmin: boolean; text: string; createdAt: string }
+export type AdminComplaint = {
+  id: string
+  from: string
+  fromType: 'Student' | 'Landlord'
+  against: string
+  property: string
+  category: string
+  createdAt: string
+  status: AdminComplaintStatus
+  description: string
+  messages: AdminComplaintMessage[]
+}
+
 async function adminRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem('uiu_auth_token')
   if (!token) throw new Error('Please sign in with an administrator account to manage users.')
@@ -162,5 +177,34 @@ export async function setAdminListingCategory(
 
 export async function fetchAdminReportData(): Promise<AdminReportData> {
   const response = await adminRequest<{ data: AdminReportData }>('/reports')
+  return response.data
+}
+
+export async function fetchAdminComplaints(options: { status?: AdminComplaintStatus; query?: string } = {}): Promise<AdminComplaint[]> {
+  const params = new URLSearchParams()
+  if (options.status) params.set('status', options.status)
+  if (options.query?.trim()) params.set('q', options.query.trim())
+  const response = await adminRequest<{ data: AdminComplaint[] }>(`/complaints${params.size ? `?${params}` : ''}`)
+  return response.data
+}
+
+export async function fetchAdminComplaint(id: string): Promise<AdminComplaint> {
+  const response = await adminRequest<{ data: AdminComplaint }>(`/complaints/${encodeURIComponent(id)}`)
+  return response.data
+}
+
+export async function updateAdminComplaintStatus(id: string, status: AdminComplaintStatus): Promise<AdminComplaint> {
+  const response = await adminRequest<{ data: AdminComplaint }>(`/complaints/${encodeURIComponent(id)}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  })
+  return response.data
+}
+
+export async function replyToAdminComplaint(id: string, message: string): Promise<AdminComplaint> {
+  const response = await adminRequest<{ data: AdminComplaint }>(`/complaints/${encodeURIComponent(id)}/replies`, {
+    method: 'POST',
+    body: JSON.stringify({ message }),
+  })
   return response.data
 }
