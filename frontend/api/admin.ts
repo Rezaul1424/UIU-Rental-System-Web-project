@@ -36,6 +36,9 @@ export type AdminCategory = { id: string; name: string; createdAt: string }
 
 export type AdminReportData = {
   generatedAt: string
+  activeLeases: number
+  openComplaints: number
+  recentActivity: { id: string; type: string; text: string; createdAt: string }[]
   userGrowth: { month: string; students: number; landlords: number }[]
   rentCollection: { month: string; collected: number; pending: number; overdue: number; expected: number }[]
   listingActivity: { month: string; newListings: number }[]

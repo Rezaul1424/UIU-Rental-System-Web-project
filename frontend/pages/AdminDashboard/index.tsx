@@ -179,7 +179,7 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
   }, [])
 
   useEffect(() => {
-    if (page !== 'reports') return
+    if (page !== 'reports' && page !== 'overview') return
     let mounted = true
     setIsLoadingReports(true)
     setReportsError('')
@@ -343,7 +343,10 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
           {isLoadingAccounts && <div role="status" className="rounded-xl bg-white px-4 py-3 text-sm text-gray-500">Loading users from the database…</div>}
           {page === 'overview' && (
             <OverviewPage
-              listings={listings}
+              report={reports}
+              reportError={reportsError}
+              isLoadingReport={isLoadingReports}
+              onRetryReport={() => setReportsRetry(value => value + 1)}
               lRows={lRows}
               sRows={sRows}
               pendingLandlords={pendingLandlords}

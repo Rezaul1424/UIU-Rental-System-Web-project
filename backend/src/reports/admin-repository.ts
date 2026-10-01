@@ -3,6 +3,9 @@ import type { RowDataPacket } from 'mysql2';
 
 export type AdminReportData = {
   generatedAt: string;
+  activeLeases: number;
+  openComplaints: number;
+  recentActivity: { id: string; type: string; text: string; createdAt: string }[];
   userGrowth: { month: string; students: number; landlords: number }[];
   rentCollection: { month: string; collected: number; pending: number; overdue: number; expected: number }[];
   listingActivity: { month: string; newListings: number }[];
@@ -43,6 +46,9 @@ function emptyReport(): AdminReportData {
   const accountStatuses = () => ({ active: 0, pending: 0, suspended: 0, deactivated: 0 });
   return {
     generatedAt: new Date().toISOString(),
+    activeLeases: 1,
+    openComplaints: 0,
+    recentActivity: [],
     userGrowth: months.map((month) => ({ month, students: 0, landlords: 0 })),
     rentCollection: months.slice(-6).map((month) => ({ month, collected: 0, pending: 0, overdue: 0, expected: 0 })),
     listingActivity: months.slice(-6).map((month) => ({ month, newListings: 0 })),
@@ -163,6 +169,47 @@ export async function getAdminReportData(): Promise<AdminReportData> {
     issue: String(row.issue),
     createdAt: new Date(row.created_at as Date).toISOString(),
     status: String(row.status),
+  }));
+
+  const [leaseRows] = await db.query<RowDataPacket[]>(
+    "SELECT COUNT(*) AS total FROM leases WHERE status = 'active'",
+  );
+  report.activeLeases = toNumber(leaseRows[0]?.total);
+
+  const [complaintRows] = await db.query<RowDataPacket[]>(
+    "SELECT COUNT(*) AS total FROM complaints WHERE status NOT IN ('Resolved', 'Closed')",
+  );
+  report.openComplaints = toNumber(complaintRows[0]?.total);
+
+  const [activityRows] = await db.query<RowDataPacket[]>(
+    `SELECT id, type, text, created_at AS createdAt FROM (
+       SELECT CONCAT('registration-', u.id) AS id, 'Registration' AS type,
+         CONCAT('New ', u.role, ' registered: ', u.name) AS text, u.created_at
+       FROM users u WHERE u.role IN ('student', 'landlord')
+       UNION ALL
+       SELECT CONCAT('application-', a.id), 'Application',
+         CONCAT(s.name, ' applied for ', p.title), a.created_at
+       FROM applications a JOIN users s ON s.id = a.student_id JOIN properties p ON p.id = a.property_id
+       UNION ALL
+       SELECT CONCAT('payment-', rp.id), 'Payment',
+         CONCAT('Rent payment ', rp.status, ' — ', s.name, ' (৳', FORMAT(rp.amount, 0), ')'),
+         COALESCE(rp.paid_at, rp.created_at)
+       FROM rent_payments rp JOIN users s ON s.id = rp.student_id
+       UNION ALL
+       SELECT CONCAT('maintenance-', mr.id), 'Maintenance',
+         CONCAT('Maintenance request: ', mr.issue, ' — ', p.title), mr.created_at
+       FROM maintenance_requests mr JOIN properties p ON p.id = mr.property_id
+       UNION ALL
+       SELECT CONCAT('complaint-', c.id), 'Complaint',
+         CONCAT('Complaint submitted: ', c.category), c.created_at
+       FROM complaints c
+     ) AS activity ORDER BY created_at DESC LIMIT 6`,
+  );
+  report.recentActivity = activityRows.map((row) => ({
+    id: String(row.id),
+    type: String(row.type),
+    text: String(row.text),
+    createdAt: new Date(row.createdAt as Date).toISOString(),
   }));
 
   return report;
