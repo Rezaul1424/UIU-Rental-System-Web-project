@@ -9,6 +9,7 @@ import {
   fetchAdminComplaint,
   fetchAdminComplaints,
   fetchAdminCategories,
+  fetchAdminConversations,
   fetchAdminListings,
   fetchAdminReportData,
   renameAdminCategory,
@@ -21,6 +22,7 @@ import {
   type AdminAccountStatus,
   type AdminCategory,
   type AdminComplaintStatus,
+  type AdminConversation,
   type AdminListing,
   type AdminModerationStatus,
   type AdminReportData,
@@ -37,7 +39,7 @@ import ReportsPage from './Reports'
 import ChatMonitorPage from './ChatMonitor'
 import ComplaintsPage from './Complaints'
 import SettingsPage from './Settings'
-import type { AdminComplaint, AdminChatConversation } from './types'
+import type { AdminComplaint } from './types'
 
 function registrationDate(value?: string): string {
   return value ? new Date(value).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
@@ -107,13 +109,12 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
   const [cStatusFilter, setCStatusFilter] = useState<'all' | 'Submitted' | 'Under Review' | 'Responded' | 'Resolved' | 'Closed'>('all')
   const [cSearch, setCSearch] = useState('')
 
-  const chatConversations: AdminChatConversation[] = [
-    { id: 'CH-001', student: 'Tanvir Ahmed', landlord: 'Rahman Faruk', property: 'Studio near Gate 3', propertyId: 'UIU-1001', lastMsg: '31 Jul 2026', status: 'Active', msgs: [{ from: 'student', text: 'Hello! How can I help you today?', time: '10:00' }, { from: 'landlord', text: 'I wanted to ask about the parking availability.', time: '10:05' }, { from: 'landlord', text: 'Yes, we have one parking spot included with your unit.', time: '10:06' }] },
-    { id: 'CH-002', student: 'Sadia Islam', landlord: 'Nusrat Jahan', property: 'Shared Mess – South Campus', propertyId: 'UIU-1002', lastMsg: '29 Jul 2026', status: 'Active', msgs: [{ from: 'student', text: 'Is the mess still accepting new students?', time: '09:00' }, { from: 'landlord', text: 'Yes, we have 2 spots available from August.', time: '09:15' }] },
-    { id: 'CH-003', student: 'Rifat Hassan', landlord: 'Karim Abdullah', property: 'Sublet – Bashundhara R/A', propertyId: 'UIU-1003', lastMsg: '27 Jul 2026', status: 'Inactive', msgs: [{ from: 'student', text: 'What is the earliest move-in date?', time: '14:00' }, { from: 'landlord', text: 'You can move in from August 1st.', time: '14:30' }] },
-  ]
-  const [selectedChat, setSelectedChat] = useState<AdminChatConversation | null>(null)
+  const [chatConversations, setChatConversations] = useState<AdminConversation[]>([])
+  const [selectedChat, setSelectedChat] = useState<AdminConversation | null>(null)
   const [chatMonitorSearch, setChatMonitorSearch] = useState('')
+  const [chatMonitorError, setChatMonitorError] = useState('')
+  const [isLoadingChats, setIsLoadingChats] = useState(false)
+  const [chatMonitorRetry, setChatMonitorRetry] = useState(0)
 
   const [catFilter, setCatFilter] = useState('all')
   const [catSearch, setCatSearch] = useState('')
@@ -205,6 +206,20 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
       .finally(() => { if (mounted) setIsLoadingComplaints(false) })
     return () => { mounted = false }
   }, [page, complaintsRetry])
+
+  useEffect(() => {
+    if (page !== 'chat-monitor') return
+    let mounted = true
+    setIsLoadingChats(true)
+    setChatMonitorError('')
+    fetchAdminConversations(chatMonitorSearch)
+      .then(data => { if (mounted) setChatConversations(data) })
+      .catch((error: unknown) => {
+        if (mounted) setChatMonitorError(error instanceof Error ? error.message : 'Could not load conversations.')
+      })
+      .finally(() => { if (mounted) setIsLoadingChats(false) })
+    return () => { mounted = false }
+  }, [page, chatMonitorSearch, chatMonitorRetry])
 
   const selectComplaint = async (complaint: AdminComplaint) => {
     try {
@@ -487,6 +502,9 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
               setSelectedChat={setSelectedChat}
               chatMonitorSearch={chatMonitorSearch}
               setChatMonitorSearch={setChatMonitorSearch}
+              isLoading={isLoadingChats}
+              error={chatMonitorError}
+              onRetry={() => setChatMonitorRetry(value => value + 1)}
             />
           )}
 

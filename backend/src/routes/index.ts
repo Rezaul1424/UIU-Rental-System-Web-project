@@ -7,6 +7,7 @@ import { adminRouter } from './admin.js';
 import { adminListingsRouter } from './admin-listings.js';
 import { adminReportsRouter } from './admin-reports.js';
 import { adminComplaintsRouter } from './admin-complaints.js';
+import { adminChatRouter } from './admin-chat.js';
 
 /**
  * All v1 API routes are mounted here and registered under /api/v1 in
@@ -23,5 +24,6 @@ v1Router.use('/admin', adminRouter);
 v1Router.use('/admin', adminListingsRouter);
 v1Router.use('/admin', adminReportsRouter);
 v1Router.use('/admin', adminComplaintsRouter);
+v1Router.use('/admin', adminChatRouter);
 
 export { v1Router };

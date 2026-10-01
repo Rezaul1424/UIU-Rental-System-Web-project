@@ -67,6 +67,17 @@ export type AdminComplaint = {
   messages: AdminComplaintMessage[]
 }
 
+export type AdminConversation = {
+  id: string
+  student: string
+  landlord: string
+  property: string
+  propertyId: string
+  lastMessageAt: string
+  status: 'Active' | 'Inactive'
+  messages: { id: string; from: 'student' | 'landlord'; senderName: string; text: string; createdAt: string }[]
+}
+
 async function adminRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem('uiu_auth_token')
   if (!token) throw new Error('Please sign in with an administrator account to manage users.')
@@ -206,5 +217,12 @@ export async function replyToAdminComplaint(id: string, message: string): Promis
     method: 'POST',
     body: JSON.stringify({ message }),
   })
+  return response.data
+}
+
+export async function fetchAdminConversations(query?: string): Promise<AdminConversation[]> {
+  const params = new URLSearchParams()
+  if (query?.trim()) params.set('q', query.trim())
+  const response = await adminRequest<{ data: AdminConversation[] }>(`/conversations${params.size ? `?${params}` : ''}`)
   return response.data
 }
