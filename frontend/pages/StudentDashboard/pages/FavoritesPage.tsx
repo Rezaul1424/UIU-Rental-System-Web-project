@@ -6,7 +6,7 @@ type FavoritesPageProps = {
   favorites: number[]
   listings: Listing[]
   openStudentListing: (listing: Listing) => void
-  toggleFavorite: (id: number) => void
+  toggleFavorite: (id: number, propertyId?: string) => void
   setPage: (page: StudentPage) => void
 }
 
@@ -33,7 +33,7 @@ export default function FavoritesPage({ favorites, listings, openStudentListing,
             <div key={l.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden hover:shadow-lg transition-all group cursor-pointer" onClick={() => openStudentListing(l)}>
               <div className="h-44 overflow-hidden bg-gray-100 relative">
                 <img src={l.image} alt={l.title} className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300" />
-                <button onClick={e => { e.stopPropagation(); toggleFavorite(l.id) }} className="absolute top-3 right-3 w-8 h-8 rounded-full bg-red-500 text-white flex items-center justify-center shadow-md hover:bg-red-600 transition-colors">
+                <button onClick={e => { e.stopPropagation(); toggleFavorite(l.id, String(l.propertyId || l.id)) }} className="absolute top-3 right-3 w-8 h-8 rounded-full bg-red-500 text-white flex items-center justify-center shadow-md hover:bg-red-600 transition-colors">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" /></svg>
                 </button>
                 <div className="absolute top-3 left-3">
@@ -52,7 +52,7 @@ export default function FavoritesPage({ favorites, listings, openStudentListing,
                 </div>
                 <div className="flex items-center justify-between pt-3 border-t border-gray-100">
                   <span className="font-bold text-[#1a1a18]">৳{l.price.toLocaleString()}<span className="text-xs font-normal text-gray-400">/mo</span></span>
-                  <button onClick={e => { e.stopPropagation(); toggleFavorite(l.id) }} className="text-xs text-red-500 hover:text-red-700 font-medium transition-colors">Remove</button>
+                  <button onClick={e => { e.stopPropagation(); toggleFavorite(l.id, String(l.propertyId || l.id)) }} className="text-xs text-red-500 hover:text-red-700 font-medium transition-colors">Remove</button>
                 </div>
               </div>
             </div>

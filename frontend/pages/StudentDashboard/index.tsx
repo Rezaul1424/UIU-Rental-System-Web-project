@@ -126,16 +126,16 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
 
   // Favorites
   const [favorites, setFavorites] = useState<number[]>([])
-  const toggleFavorite = async (id: number) => {
+  const toggleFavorite = async (id: number, propertyId?: string) => {
     const isFavorite = favorites.includes(id)
     const nextFavorites = isFavorite ? favorites.filter(f => f !== id) : [...favorites, id]
     setFavorites(nextFavorites)
 
     try {
       if (isFavorite) {
-        await removeFavorite(id)
+        await removeFavorite(propertyId || String(id))
       } else {
-        await addFavorite(id)
+        await addFavorite(propertyId || String(id))
       }
     } catch (error) {
       setDashboardError(error instanceof Error ? error.message : 'Could not update favorite.')
@@ -733,7 +733,7 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
                 listing={viewListing}
                 onBack={() => setPage('browse')}
                 isFavorited={favorites.includes(viewListing.id)}
-                onToggleFavorite={() => toggleFavorite(viewListing.id)}
+                onToggleFavorite={() => toggleFavorite(viewListing.id, String(viewListing.propertyId || viewListing.id))}
                 currentTenants={leases
                   .filter((lease) => lease.status === 'active' && (
                     lease.propertyId === String(viewListing.propertyId || viewListing.id) ||
@@ -876,7 +876,7 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
           {page === 'favorites' && (
             <FavoritesPage
               favorites={favorites}
-              listings={listings}
+              listings={allListings}
               openStudentListing={openStudentListing}
               toggleFavorite={toggleFavorite}
               setPage={setPage}
