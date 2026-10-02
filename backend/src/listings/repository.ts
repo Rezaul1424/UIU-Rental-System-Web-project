@@ -2,6 +2,7 @@ import mysql from 'mysql2/promise';
 import type { RowDataPacket } from 'mysql2';
 import type { Listing, ListingTypeType } from '../contracts/api.js';
 import { databasePropertyTypeToApiType } from '../contracts/api.js';
+import { testListings as landlordTestListings } from '../landlord/repository.js';
 
 export type ListingSearch = {
   page: number;
@@ -108,7 +109,7 @@ function sortFixtures(items: Listing[], search: ListingSearch): Listing[] {
 
 function filterFixtures(search: ListingSearch): Listing[] {
   const query = search.q?.toLowerCase();
-  return testListings.filter((listing) => {
+  return getFixtureListings().filter((listing) => {
     if (query && !`${listing.title} ${listing.description} ${listing.address.area ?? ''}`.toLowerCase().includes(query)) return false;
     if (search.type && listing.type !== search.type) return false;
     if (search.maxPrice !== undefined && listing.priceBDT > search.maxPrice) return false;
@@ -118,6 +119,48 @@ function filterFixtures(search: ListingSearch): Listing[] {
     if (search.facilities.some((facility) => !listing.facilities.some((value) => value.toLowerCase() === facility.toLowerCase()))) return false;
     return true;
   });
+}
+
+function getFixtureListings(): Listing[] {
+  const dynamicListings: Array<Listing & { propertyCode?: string }> = [];
+  for (const listings of landlordTestListings.values()) {
+    for (const listing of listings) {
+      if (listing.status !== 'approved') continue;
+
+      dynamicListings.push({
+        id: listing.id,
+        propertyCode: listing.propertyCode,
+        title: listing.title,
+        landlordName: 'Landlord',
+        type: listing.type,
+        description: listing.description,
+        priceBDT: listing.priceBDT,
+        currency: 'BDT',
+        status: listing.status === 'approved' ? 'approved' : 'draft',
+        bedrooms: listing.bedrooms,
+        rooms: listing.bedrooms ?? 1,
+        roomSizesSqFt: [listing.bedrooms ?? 1],
+        totalSizeSqFt: undefined,
+        roommateCapacity: listing.roommateCapacity,
+        parkingAvailable: listing.parkingAvailable,
+        facilities: listing.facilities,
+        images: [],
+        address: {
+          line1: listing.address.line1,
+          area: listing.address.area,
+          city: listing.address.city,
+          district: listing.address.district,
+          latitude: listing.address.latitude,
+          longitude: listing.address.longitude,
+        },
+        distanceKm: 0.3,
+        createdAt: listing.createdAt,
+        updatedAt: listing.updatedAt,
+      });
+    }
+  }
+
+  return [...testListings.filter((listing) => listing.status === 'approved'), ...dynamicListings];
 }
 
 function mapListing(row: PropertyRow, images: ImageRow[], amenities: AmenityRow[]): Listing {
@@ -195,7 +238,10 @@ export async function searchPublicListings(search: ListingSearch) {
 }
 
 export async function getPublicListing(identifier: string): Promise<Listing | undefined> {
-  if (useFixtures()) return testListings.find((listing) => listing.id === identifier);
+  if (useFixtures()) {
+    const candidates = getFixtureListings();
+    return candidates.find((listing) => listing.id === identifier || (listing as Listing & { propertyCode?: string }).propertyCode === identifier);
+  }
   const [rows] = await db.query<PropertyRow[]>('SELECT p.*, u.name AS landlord_name, p.map_pin_x AS latitude, p.map_pin_y AS longitude FROM properties p JOIN users u ON u.id = p.landlord_id WHERE p.status = \'available\' AND (p.property_code = ? OR CAST(p.id AS CHAR) = ?) LIMIT 1', [identifier, identifier]);
   const row = rows[0];
   if (!row) return undefined;

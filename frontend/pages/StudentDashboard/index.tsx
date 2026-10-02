@@ -186,7 +186,31 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
 
   // ── Applications ────────────────────────────────────────────────────────────
   const [applications, setApplications] = useState<Application[]>([])
-  const hasApplied = (id: number) => applications.some(a => (a.listingId === id || Number(a.propertyId) === id) && a.status !== 'cancelled')
+
+  useEffect(() => {
+    let active = true
+    const refreshApplications = async () => {
+      if (document.visibilityState !== 'visible') return
+      const refreshed = await getApplications().catch(() => null)
+      if (active && refreshed) setApplications(refreshed)
+    }
+
+    let refreshTimer: ReturnType<typeof setInterval> | undefined
+    if (page === 'browse') {
+      void refreshApplications()
+      refreshTimer = setInterval(() => { void refreshApplications() }, 10000)
+    }
+    window.addEventListener('focus', refreshApplications)
+    document.addEventListener('visibilitychange', refreshApplications)
+    return () => {
+      active = false
+      if (refreshTimer) clearInterval(refreshTimer)
+      window.removeEventListener('focus', refreshApplications)
+      document.removeEventListener('visibilitychange', refreshApplications)
+    }
+  }, [page])
+
+  const hasApplied = (id: number) => applications.some(a => a.listingId === id && a.status === 'under-review')
   const openApplicationListing = (app: Application) => {
     const matched = allListings.find(l => l.id === app.listingId || String(l.id) === app.propertyId || l.propertyId === app.propertyId)
       ?? listings.find(l => l.id === app.listingId)

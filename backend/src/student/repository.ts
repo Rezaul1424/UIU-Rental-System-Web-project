@@ -11,7 +11,7 @@ import type {
   StudentReceiptSummary,
   StudentRentSummary,
 } from '../contracts/student.js';
-import { findTestListing, testApplications } from '../landlord/repository.js';
+import { findTestListing, testApplications, testLeases } from '../landlord/repository.js';
 
 export const testStudentReviews = new Map<string, any[]>();
 export const testStudentComplaints = new Map<string, any[]>();
@@ -354,14 +354,18 @@ export const studentRepository: StudentRepository = {
   async submitApplication(studentId: string, payload: StudentApplicationPayload): Promise<StudentApplicationPayload & { id: string; status: 'under-review' | 'accepted' | 'rejected' | 'cancelled'; createdAt: string }> {
     if (useFixtures()) {
       const list = testApplications.get(studentId) ?? [];
-      if (list.some((application) => application.propertyId === payload.propertyId && application.status !== 'cancelled')) {
+      const testListing = findTestListing(payload.propertyId);
+      if (testListing && testListing.status !== 'approved') {
+        throw new AppError(409, 'LISTING_NOT_AVAILABLE', 'This property is not currently available');
+      }
+      const propertyId = testListing?.id || payload.propertyId;
+      if (list.some((application) => application.propertyId === propertyId && application.status === 'under-review')) {
         throw new AppError(409, 'DUPLICATE_APPLICATION', 'You already submitted an application for this property');
       }
-      const testListing = findTestListing(payload.propertyId);
       const landlordId = testListing?.landlordId || payload.landlordId || '2';
       const application = {
-        id: `${studentId}-${payload.propertyId}`,
-        propertyId: testListing?.id || payload.propertyId,
+        id: `${studentId}-${propertyId}-${Date.now()}-${list.length + 1}`,
+        propertyId,
         studentId,
         landlordId,
         studentCardNo: payload.studentCardNo,
@@ -383,11 +387,14 @@ export const studentRepository: StudentRepository = {
     }
 
     const propertyId = await resolvePropertyId(payload.propertyId);
-    const [propertyRows] = await db.query<RowDataPacket[]>('SELECT landlord_id FROM properties WHERE id = ? LIMIT 1', [propertyId]);
+    const [propertyRows] = await db.query<RowDataPacket[]>('SELECT landlord_id, status FROM properties WHERE id = ? LIMIT 1', [propertyId]);
     const property = propertyRows[0];
     if (!property) throw new AppError(404, 'LISTING_NOT_FOUND', 'Listing does not exist');
+    if (property.status !== 'available') {
+      throw new AppError(409, 'LISTING_NOT_AVAILABLE', 'This property is not currently available');
+    }
 
-    const [existingRows] = await db.query<RowDataPacket[]>('SELECT id FROM applications WHERE student_id = ? AND property_id = ? AND status != ? LIMIT 1', [userId, propertyId, 'cancelled']);
+    const [existingRows] = await db.query<RowDataPacket[]>('SELECT id FROM applications WHERE student_id = ? AND property_id = ? AND status = ? LIMIT 1', [userId, propertyId, 'under-review']);
     const existing = existingRows[0] as RowDataPacket | undefined;
     if (existing?.id) throw new AppError(409, 'DUPLICATE_APPLICATION', 'You already submitted an application for this property');
 
@@ -449,7 +456,32 @@ export const studentRepository: StudentRepository = {
   },
 
   async getLeases(studentId: string): Promise<StudentLeaseSummary[]> {
-    if (useFixtures()) return [];
+    if (useFixtures()) {
+      const matches: StudentLeaseSummary[] = [];
+      for (const leases of testLeases.values()) {
+        for (const lease of leases) {
+          if (lease.studentId !== studentId) continue;
+
+          const listing = findTestListing(lease.propertyId);
+          matches.push({
+            id: lease.id,
+            propertyId: lease.propertyId,
+            propertyTitle: listing?.title,
+            propertyCode: listing?.propertyCode,
+            studentId: lease.studentId,
+            landlordId: lease.landlordId,
+            landlordName: undefined,
+            status: lease.status,
+            startDate: lease.startDate,
+            endDate: lease.endDate,
+            monthlyRent: Number(lease.monthlyRent ?? 0),
+            createdAt: lease.createdAt,
+            updatedAt: lease.updatedAt,
+          });
+        }
+      }
+      return matches.sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''));
+    }
     const userId = Number(studentId);
     if (!Number.isFinite(userId)) return [];
 

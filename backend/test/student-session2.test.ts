@@ -105,6 +105,17 @@ describe('Session 2 student dashboard flows', () => {
     expect(second.status).toBe(409);
     expect(second.body.error.code).toBe('DUPLICATE_APPLICATION');
 
+    const cancelled = await request(app)
+      .patch(`/api/v1/student/applications/${first.body.data.id}/cancel`)
+      .set('Authorization', `Bearer ${login.body.token}`);
+    expect(cancelled.status).toBe(200);
+
+    const reapplied = await request(app)
+      .post('/api/v1/student/applications')
+      .set('Authorization', `Bearer ${login.body.token}`)
+      .send(payload);
+    expect(reapplied.status).toBe(201);
+
     const list = await request(app)
       .get('/api/v1/student/applications')
       .set('Authorization', `Bearer ${login.body.token}`);

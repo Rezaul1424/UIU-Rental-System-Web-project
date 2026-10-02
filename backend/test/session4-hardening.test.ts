@@ -183,6 +183,162 @@ describe('Session 4 hardening', () => {
     expect(reloaded.body.data.find((item: { id: string }) => item.id === 'stage-request-1').stage).toBe(4);
   });
 
+  it('ends a previous active lease and reopens the old property when a tenant moves into a new one', async () => {
+    await request(app).post('/api/v1/auth/register').send({
+      name: 'Relocation Landlord',
+      email: 'relocation.landlord@uiu.ac.bd',
+      password: 'StrongPass123!',
+      studentId: 'LAND-301',
+      role: 'landlord',
+    });
+
+    const landlordLogin = await request(app).post('/api/v1/auth/login').send({
+      email: 'relocation.landlord@uiu.ac.bd',
+      password: 'StrongPass123!',
+    });
+
+    const firstListing = await request(app)
+      .post('/api/v1/landlord/listings')
+      .set('Authorization', `Bearer ${landlordLogin.body.token}`)
+      .send({
+        title: 'Original Rental Unit',
+        description: 'Initial listing for the single-tenant rule test.',
+        type: 'apartment',
+        priceBDT: 5200,
+        bedrooms: 2,
+        roommateCapacity: 2,
+        parkingAvailable: false,
+        facilities: ['WiFi'],
+        address: {
+          line1: 'Road 7',
+          area: 'Motijheel',
+          city: 'Dhaka',
+          district: 'Dhaka',
+          latitude: 23.75,
+          longitude: 90.38,
+        },
+        status: 'approved',
+      });
+
+    const secondListing = await request(app)
+      .post('/api/v1/landlord/listings')
+      .set('Authorization', `Bearer ${landlordLogin.body.token}`)
+      .send({
+        title: 'Replacement Rental Unit',
+        description: 'New listing for the single-tenant rule test.',
+        type: 'studio',
+        priceBDT: 6100,
+        bedrooms: 1,
+        roommateCapacity: 1,
+        parkingAvailable: true,
+        facilities: ['WiFi', 'AC'],
+        address: {
+          line1: 'Road 8',
+          area: 'Bashundhara',
+          city: 'Dhaka',
+          district: 'Dhaka',
+          latitude: 23.81,
+          longitude: 90.42,
+        },
+        status: 'approved',
+      });
+
+    await request(app).post('/api/v1/auth/register').send({
+      name: 'Relocation Student',
+      email: 'relocation.student@uiu.ac.bd',
+      password: 'StrongPass123!',
+      studentId: '01124000100',
+      role: 'student',
+    });
+
+    const studentLogin = await request(app).post('/api/v1/auth/login').send({
+      email: 'relocation.student@uiu.ac.bd',
+      password: 'StrongPass123!',
+    });
+
+    const firstApplication = await request(app)
+      .post('/api/v1/student/applications')
+      .set('Authorization', `Bearer ${studentLogin.body.token}`)
+      .send({
+        propertyId: firstListing.body.data.id,
+        moveInDate: '2026-10-01',
+        message: 'First lease',
+        studentCardNo: '01124000100',
+        contactPhone: '01700000100',
+        employment: 'Student',
+      });
+
+    const secondApplication = await request(app)
+      .post('/api/v1/student/applications')
+      .set('Authorization', `Bearer ${studentLogin.body.token}`)
+      .send({
+        propertyId: secondListing.body.data.id,
+        moveInDate: '2026-10-15',
+        message: 'Second lease',
+        studentCardNo: '01124000100',
+        contactPhone: '01700000100',
+        employment: 'Student',
+      });
+    expect(secondApplication.status).toBe(201);
+
+    await request(app)
+      .patch(`/api/v1/landlord/applications/${firstApplication.body.data.id}/status`)
+      .set('Authorization', `Bearer ${landlordLogin.body.token}`)
+      .send({ status: 'accepted' });
+
+    const applications = await request(app)
+      .get('/api/v1/student/applications')
+      .set('Authorization', `Bearer ${studentLogin.body.token}`);
+    expect(applications.body.data.find((application: { id: string }) => application.id === secondApplication.body.data.id)?.status).toBe('cancelled');
+
+    const availableProperty = await request(app)
+      .get(`/api/v1/listings/${secondListing.body.data.id}`);
+    expect(availableProperty.status).toBe(200);
+
+    const reapplication = await request(app)
+      .post('/api/v1/student/applications')
+      .set('Authorization', `Bearer ${studentLogin.body.token}`)
+      .send({
+        propertyId: secondListing.body.data.id,
+        moveInDate: '2026-11-01',
+        message: 'Applying again after the other application was cancelled',
+        studentCardNo: '01124000100',
+        contactPhone: '01700000100',
+        employment: 'Student',
+      });
+    expect(reapplication.status).toBe(201);
+
+    await request(app)
+      .patch(`/api/v1/landlord/applications/${reapplication.body.data.id}/status`)
+      .set('Authorization', `Bearer ${landlordLogin.body.token}`)
+      .send({ status: 'accepted' });
+
+    const leases = await request(app)
+      .get('/api/v1/student/leases')
+      .set('Authorization', `Bearer ${studentLogin.body.token}`);
+
+    expect(leases.status).toBe(200);
+    expect(leases.body.data.filter((lease: { status: string }) => lease.status === 'active')).toHaveLength(1);
+    expect(leases.body.data.find((lease: { status: string; propertyId: string }) => lease.status === 'active')?.propertyId).toBe(secondListing.body.data.id);
+
+    const reapplyToPreviousProperty = await request(app)
+      .post('/api/v1/student/applications')
+      .set('Authorization', `Bearer ${studentLogin.body.token}`)
+      .send({
+        propertyId: firstListing.body.data.id,
+        moveInDate: '2026-12-01',
+        message: 'Applying again after moving out',
+        studentCardNo: '01124000100',
+        contactPhone: '01700000100',
+        employment: 'Student',
+      });
+    expect(reapplyToPreviousProperty.status).toBe(201);
+
+    const oldProperty = await request(app)
+      .get(`/api/v1/listings/${firstListing.body.data.id}`);
+    expect(oldProperty.status).toBe(200);
+  });
+
   it('allows a landlord to review an application and generate an active lease upon acceptance', async () => {
     await request(app).post('/api/v1/auth/register').send({
       name: 'Review Landlord',

@@ -135,10 +135,10 @@ type TestLeaseRecord = LandlordLeaseSummary & {
   landlordId: string;
 };
 
-const testListings = new Map<string, TestListingRecord[]>();
+export const testListings = new Map<string, TestListingRecord[]>();
 export const testApplications = new Map<string, TestApplicationRecord[]>();
 export const testMaintenanceRequests = new Map<string, TestMaintenanceRecord[]>();
-const testLeases = new Map<string, TestLeaseRecord[]>();
+export const testLeases = new Map<string, TestLeaseRecord[]>();
 export const testLandlordComplaints = new Map<string, any[]>();
 
 export function findTestListing(idOrCode: string): TestListingRecord | undefined {
@@ -349,7 +349,7 @@ export const landlordRepository: LandlordRepository = {
       const propertyCode = `UIU-${String(list.length + 1).padStart(4, '0')}`;
       const record: TestListingRecord = {
         ...payload,
-        id: `LIST-${Date.now()}`,
+        id: `LIST-${Date.now()}-${list.length + 1}`,
         landlordId,
         propertyCode,
         createdAt: now,
@@ -566,8 +566,27 @@ export const landlordRepository: LandlordRepository = {
           const status = payload.status === 'under-review' || payload.status === 'accepted' || payload.status === 'rejected' || payload.status === 'cancelled' ? payload.status : current.status;
           list[index] = { ...current, status };
           if (status === 'accepted') {
+            for (const applications of testApplications.values()) {
+              for (const application of applications) {
+                if (application.studentId === current.studentId && application.id !== current.id && application.propertyId !== current.propertyId && (application.status === 'under-review' || application.status === 'accepted')) {
+                  application.status = 'cancelled';
+                }
+              }
+            }
+
+            const leaseBuckets = Array.from(testLeases.values()).flat();
+            const priorLeases = leaseBuckets.filter((lease) => lease.studentId === current.studentId && lease.status === 'active' && lease.propertyId !== current.propertyId);
+            for (const lease of priorLeases) {
+              lease.status = 'ended';
+              lease.updatedAt = new Date().toISOString();
+              lease.endDate = new Date().toISOString().slice(0, 10);
+              const previousListing = findTestListing(lease.propertyId);
+              if (previousListing) previousListing.status = 'approved';
+            }
+
             const leasesList = testLeases.get(landlordId) ?? [];
-            if (!leasesList.some((l) => l.propertyId === current.propertyId && l.studentId === current.studentId)) {
+            const activeForProperty = [...leasesList, ...leaseBuckets].find((l) => l.propertyId === current.propertyId && l.studentId === current.studentId && l.status === 'active');
+            if (!activeForProperty) {
               leasesList.push({
                 id: `lease-${Date.now()}`,
                 propertyId: current.propertyId,
@@ -581,6 +600,8 @@ export const landlordRepository: LandlordRepository = {
               });
               testLeases.set(landlordId, leasesList);
             }
+            const currentListing = findTestListing(current.propertyId);
+            if (currentListing) currentListing.status = 'occupied';
           }
           return { id: current.id, status, reviewedAt: new Date().toISOString() };
         }
@@ -608,6 +629,21 @@ export const landlordRepository: LandlordRepository = {
     await db.execute('UPDATE applications SET status = ?, updated_at = NOW() WHERE id = ?', [status, applicationNumericId]);
 
     if (status === 'accepted') {
+      await db.execute(
+        'UPDATE applications SET status = "cancelled", updated_at = NOW() WHERE student_id = ? AND property_id != ? AND status IN ("under-review", "accepted")',
+        [app.student_id, app.property_id]
+      );
+
+      const [priorActiveLeases] = await db.query<RowDataPacket[]>(
+        'SELECT id, property_id FROM leases WHERE student_id = ? AND status = "active" AND property_id != ? ORDER BY updated_at DESC',
+        [app.student_id, app.property_id]
+      );
+
+      for (const lease of priorActiveLeases) {
+        await db.execute('UPDATE leases SET status = "ended", end_date = NOW(), updated_at = NOW() WHERE id = ?', [lease.id]);
+        await db.execute('UPDATE properties SET status = "available", updated_at = NOW() WHERE id = ?', [lease.property_id]);
+      }
+
       const [existingLeases] = await db.query<RowDataPacket[]>(
         'SELECT id FROM leases WHERE property_id = ? AND student_id = ? AND status = "active" LIMIT 1',
         [app.property_id, app.student_id]
