@@ -370,16 +370,16 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
   }
 
   // ── Reviews ──────────────────────────────────────────────────────────────────
-  // Landlords the student can review: current + any previously applied
+  // Reviews are available for landlords tied to the student's active leases.
   const reviewableLandlords = useMemo(() => {
-    return allListings
-      .filter((listing) => listing.landlord && listing.title)
-      .map((listing) => ({
-        landlord: listing.landlord,
-        property: listing.title,
-        listingId: listing.propertyId || String(listing.id),
-      }))
-  }, [allListings])
+    const activeLeases = leases.filter((lease) => lease.status === 'active' && lease.landlordId && lease.propertyId)
+    const byProperty = new Map(activeLeases.map((lease) => [lease.propertyCode || lease.propertyId, {
+      landlord: lease.landlordName || 'Landlord',
+      property: lease.propertyTitle || lease.propertyCode || `Property ${lease.propertyId}`,
+      listingId: lease.propertyCode || lease.propertyId,
+    }]))
+    return [...byProperty.values()]
+  }, [leases])
 
   const [reviewTarget, setReviewTarget] = useState(() => reviewableLandlords[0] ?? { landlord: '', property: '', listingId: '' })
   useEffect(() => {

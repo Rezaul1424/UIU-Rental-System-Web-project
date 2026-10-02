@@ -77,7 +77,7 @@ export default function ReviewsPage({ page, reviewHistory, reviewableLandlords, 
                 </label>
               ))}
             </div>
-            {reviewableLandlords.length === 0 && <div className="text-sm text-gray-500">No live listings are available to review right now.</div>}
+            {reviewableLandlords.length === 0 && <div className="text-sm text-gray-500">No active rentals to review yet. Your landlord will appear here after you rent a property.</div>}
             {alreadyReviewed(reviewTarget.listingId) && (
               <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3.5 flex items-center justify-between">
                 <span className="text-sm text-emerald-800 font-medium">You've already reviewed {reviewTarget.landlord}</span>
