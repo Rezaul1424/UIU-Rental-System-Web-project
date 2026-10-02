@@ -9,6 +9,7 @@ type SettingsPageProps = {
   onSaveProfile?: (data: { name?: string; phone?: string; companyName?: string }) => Promise<boolean>
   myListingsCount: number
   landlordComplaints: LandlordComplaint[]
+  complaintTargets: Array<{ studentName: string; propertyTitle: string }>
   showLandlordComplaintForm: boolean
   setShowLandlordComplaintForm: (value: boolean) => void
   lcForm: { against: string; property: string; category: string; subject: string; description: string }
@@ -17,7 +18,7 @@ type SettingsPageProps = {
   setShowLandlordDeactivateConfirm: (value: boolean) => void
 }
 
-export default function SettingsPage({ userName, profile, onSaveProfile, myListingsCount, landlordComplaints, showLandlordComplaintForm, setShowLandlordComplaintForm, lcForm, setLcForm, submitLandlordComplaint, setShowLandlordDeactivateConfirm }: SettingsPageProps) {
+export default function SettingsPage({ userName, profile, onSaveProfile, myListingsCount, landlordComplaints, complaintTargets, showLandlordComplaintForm, setShowLandlordComplaintForm, lcForm, setLcForm, submitLandlordComplaint, setShowLandlordDeactivateConfirm }: SettingsPageProps) {
   const nameRef = useRef<HTMLInputElement>(null)
   const phoneRef = useRef<HTMLInputElement>(null)
   const companyRef = useRef<HTMLInputElement>(null)
@@ -30,6 +31,11 @@ export default function SettingsPage({ userName, profile, onSaveProfile, myListi
   const [pwLoading, setPwLoading] = useState(false)
   const [pwError, setPwError] = useState('')
   const [pwSuccess, setPwSuccess] = useState('')
+  const complaintPropertyOptions = lcForm.against
+    ? complaintTargets
+        .filter((target) => target.studentName === lcForm.against)
+        .map((target) => target.propertyTitle)
+    : complaintTargets.map((target) => target.propertyTitle)
 
   const handlePasswordChange = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
@@ -249,11 +255,34 @@ export default function SettingsPage({ userName, profile, onSaveProfile, myListi
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1">Student</label>
-                    <input value={lcForm.against} onChange={e => setLcForm({ ...lcForm, against: e.target.value })} placeholder="Student name" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#1a1a18]" />
+                    <select
+                      value={lcForm.against}
+                      onChange={e => setLcForm({
+                        ...lcForm,
+                        against: e.target.value,
+                        property: complaintTargets.find((target) => target.studentName === e.target.value)?.propertyTitle ?? '',
+                      })}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#1a1a18] bg-white"
+                    >
+                      <option value="">Select tenant</option>
+                      {complaintTargets.map((target) => (
+                        <option key={`${target.studentName}-${target.propertyTitle}`} value={target.studentName}>{target.studentName}</option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1">Related Property</label>
-                    <input value={lcForm.property} onChange={e => setLcForm({ ...lcForm, property: e.target.value })} placeholder="Property name" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#1a1a18]" />
+                    <select
+                      value={lcForm.property}
+                      onChange={e => setLcForm({ ...lcForm, property: e.target.value })}
+                      disabled={!lcForm.against || complaintPropertyOptions.length === 0}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#1a1a18] bg-white disabled:bg-gray-100 disabled:text-gray-400"
+                    >
+                      <option value="">{lcForm.against ? 'Select property' : 'Choose tenant first'}</option>
+                      {complaintPropertyOptions.map((propertyTitle) => (
+                        <option key={propertyTitle} value={propertyTitle}>{propertyTitle}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">

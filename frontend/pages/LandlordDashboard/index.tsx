@@ -31,6 +31,31 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
   const [landlordComplaints, setLandlordComplaints] = useState<LandlordComplaint[]>([])
   const [showLandlordComplaintForm, setShowLandlordComplaintForm] = useState(false)
   const [lcForm, setLcForm] = useState({ against: '', property: '', category: 'Late Payment', subject: '', description: '' })
+  const complaintTargets = useMemo(() => {
+    const seen = new Set<string>()
+
+    return leases
+      .filter((lease) => lease.studentName && (lease.propertyTitle || lease.propertyCode))
+      .filter((lease) => ['active', 'ended', 'terminated'].includes(String(lease.status ?? '').toLowerCase()))
+      .map((lease) => {
+        const studentName = lease.studentName?.trim() ?? ''
+        const propertyTitle = lease.propertyTitle?.trim() || lease.propertyCode?.trim() || 'Property'
+        const key = `${studentName}::${propertyTitle}`
+
+        if (!studentName || seen.has(key)) return null
+        seen.add(key)
+
+        return { studentName, propertyTitle }
+      })
+      .filter((target): target is { studentName: string; propertyTitle: string } => Boolean(target))
+  }, [leases])
+
+  const complaintPropertyOptions = useMemo(() => {
+    if (!lcForm.against) return complaintTargets.map((target) => target.propertyTitle)
+    return complaintTargets
+      .filter((target) => target.studentName === lcForm.against)
+      .map((target) => target.propertyTitle)
+  }, [complaintTargets, lcForm.against])
   const openLandlordListing = (l: Listing) => { setLandlordView(l); setPage('listing-detail') }
 
   const formatDisplayDate = (value?: string) => {
@@ -580,7 +605,7 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
 
   // Landlord complaints submit handler
   const submitLandlordComplaint = async () => {
-    if (!lcForm.subject.trim() || !lcForm.against.trim()) return
+    if (!lcForm.subject.trim() || !lcForm.against.trim() || !lcForm.property.trim()) return
     const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
     setLandlordComplaints(prev => [...prev, {
       id: `CMP-${String(prev.length + 1).padStart(3, '0')}`,
@@ -874,6 +899,7 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
               onSaveProfile={handleUpdateLandlordProfile}
               myListingsCount={myListings.length}
               landlordComplaints={landlordComplaints}
+              complaintTargets={complaintTargets}
               showLandlordComplaintForm={showLandlordComplaintForm}
               setShowLandlordComplaintForm={setShowLandlordComplaintForm}
               lcForm={lcForm}

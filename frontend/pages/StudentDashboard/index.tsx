@@ -501,8 +501,34 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
   ])
   const [showComplaintForm, setShowComplaintForm] = useState(false)
   const [cForm, setCForm] = useState({ against: '', property: '', category: 'Maintenance Neglect', subject: '', description: '' })
+  const complaintTargets = useMemo(() => {
+    const seen = new Set<string>()
+
+    return leases
+      .filter((lease) => lease.landlordName && (lease.propertyTitle || lease.propertyCode))
+      .filter((lease) => ['active', 'ended', 'terminated'].includes(String(lease.status ?? '').toLowerCase()))
+      .map((lease) => {
+        const landlordName = lease.landlordName?.trim() ?? ''
+        const propertyTitle = lease.propertyTitle?.trim() || lease.propertyCode?.trim() || 'Property'
+        const key = `${landlordName}::${propertyTitle}`
+
+        if (!landlordName || seen.has(key)) return null
+        seen.add(key)
+
+        return { landlordName, propertyTitle }
+      })
+      .filter((target): target is { landlordName: string; propertyTitle: string } => Boolean(target))
+  }, [leases])
+
+  const complaintPropertyOptions = useMemo(() => {
+    if (!cForm.against) return complaintTargets.map((target) => target.propertyTitle)
+    return complaintTargets
+      .filter((target) => target.landlordName === cForm.against)
+      .map((target) => target.propertyTitle)
+  }, [complaintTargets, cForm.against])
+
   const submitComplaint = async () => {
-    if (!cForm.subject.trim() || !cForm.against.trim()) return
+    if (!cForm.subject.trim() || !cForm.against.trim() || !cForm.property.trim()) return
     const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
     setComplaints(prev => [...prev, {
       id: `CMP-${String(prev.length + 1).padStart(3, '0')}`,
@@ -831,6 +857,7 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
               applications={applications}
               reviewHistory={reviewHistory}
               complaints={complaints}
+              complaintTargets={complaintTargets}
               showComplaintForm={showComplaintForm}
               setShowComplaintForm={setShowComplaintForm}
               cForm={cForm}

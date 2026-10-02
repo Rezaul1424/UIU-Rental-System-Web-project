@@ -10,6 +10,7 @@ type SettingsPageProps = {
   applications: Application[]
   reviewHistory: Review[]
   complaints: Complaint[]
+  complaintTargets: Array<{ landlordName: string; propertyTitle: string }>
   showComplaintForm: boolean
   setShowComplaintForm: (value: boolean) => void
   cForm: { against: string; property: string; category: string; subject: string; description: string }
@@ -18,7 +19,7 @@ type SettingsPageProps = {
   setShowDeactivateConfirm: (value: boolean) => void
 }
 
-export default function SettingsPage({ userName, profile, onSaveProfile, applications, reviewHistory, complaints, showComplaintForm, setShowComplaintForm, cForm, setCForm, submitComplaint, setShowDeactivateConfirm }: SettingsPageProps) {
+export default function SettingsPage({ userName, profile, onSaveProfile, applications, reviewHistory, complaints, complaintTargets, showComplaintForm, setShowComplaintForm, cForm, setCForm, submitComplaint, setShowDeactivateConfirm }: SettingsPageProps) {
   const nameRef = useRef<HTMLInputElement>(null)
   const phoneRef = useRef<HTMLInputElement>(null)
   const studentIdRef = useRef<HTMLInputElement>(null)
@@ -31,6 +32,11 @@ export default function SettingsPage({ userName, profile, onSaveProfile, applica
   const [pwLoading, setPwLoading] = useState(false)
   const [pwError, setPwError] = useState('')
   const [pwSuccess, setPwSuccess] = useState('')
+  const complaintPropertyOptions = cForm.against
+    ? complaintTargets
+        .filter((target) => target.landlordName === cForm.against)
+        .map((target) => target.propertyTitle)
+    : complaintTargets.map((target) => target.propertyTitle)
 
   const handlePasswordChange = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
@@ -260,11 +266,34 @@ export default function SettingsPage({ userName, profile, onSaveProfile, applica
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1">Landlord</label>
-                    <input value={cForm.against} onChange={e => setCForm(f => ({ ...f, against: e.target.value }))} placeholder="Landlord name" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#1a1a18]" />
+                    <select
+                      value={cForm.against}
+                      onChange={e => setCForm(f => ({
+                        ...f,
+                        against: e.target.value,
+                        property: complaintTargets.find((target) => target.landlordName === e.target.value)?.propertyTitle ?? '',
+                      }))}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#1a1a18] bg-white"
+                    >
+                      <option value="">Select landlord</option>
+                      {complaintTargets.map((target) => (
+                        <option key={`${target.landlordName}-${target.propertyTitle}`} value={target.landlordName}>{target.landlordName}</option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1">Related Property</label>
-                    <input value={cForm.property} onChange={e => setCForm(f => ({ ...f, property: e.target.value }))} placeholder="Property name" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#1a1a18]" />
+                    <select
+                      value={cForm.property}
+                      onChange={e => setCForm(f => ({ ...f, property: e.target.value }))}
+                      disabled={!cForm.against || complaintPropertyOptions.length === 0}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#1a1a18] bg-white disabled:bg-gray-100 disabled:text-gray-400"
+                    >
+                      <option value="">{cForm.against ? 'Select property' : 'Choose landlord first'}</option>
+                      {complaintPropertyOptions.map((propertyTitle) => (
+                        <option key={propertyTitle} value={propertyTitle}>{propertyTitle}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
