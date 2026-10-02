@@ -46,6 +46,7 @@ export default function OverviewPage({
   rentSummary = [],
 }: OverviewPageProps) {
   const activeLease = leases.find((l) => l.status === 'active') ?? leases[0]
+  const pendingApplicationCount = applications.filter((application) => application.status === 'under-review').length
   const pendingRent = rentSummary.find((r) => !r.paid && r.status !== 'paid') ?? rentSummary[0]
 
   const propertyName = activeLease?.propertyTitle || (activeLease?.propertyCode ? activeLease.propertyCode : (activeLease ? `Property ${activeLease.propertyId}` : ''))
@@ -66,7 +67,7 @@ export default function OverviewPage({
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <Stat label="Applications" value={applications.filter(a => a.status === 'under-review').length} sub="Under review" icon="📋" />
+        <Stat label="Applications" value={pendingApplicationCount} sub="Under review" icon="📋" />
         <Stat label="Current Rent" value={currentRentValue} sub={currentRentSub} icon="🏠" />
         <Stat label="Rent Due" value={dueDateFormatted} sub={rentDueSub} icon="📅" />
         <Stat label="Maintenance" value={myRequests.filter(r => r.status !== 'resolved').length} sub="Open requests" icon="🔧" />
@@ -78,7 +79,7 @@ export default function OverviewPage({
             <div className="font-semibold text-[#111827] mb-4">Recent Activity</div>
             <div className="space-y-4">
               {[
-                { date: 'Recent', icon: '📋', text: `You have ${applications.length} submitted housing application(s)` },
+                { date: 'In progress', icon: '📋', text: `You have ${pendingApplicationCount} housing application(s) under review` },
                 { date: 'Active', icon: '🔧', text: `${myRequests.filter(r => r.status !== 'resolved').length} pending maintenance issue(s)` },
                 { date: 'Status', icon: '🏠', text: activeLease ? `Active tenancy at ${propertyName}` : 'No active lease registered yet' },
               ].map((entry, i) => (

@@ -496,12 +496,6 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
     const msg: ChatMsg = { from: 'student', text: chatInput }
     setChatThreads(t => ({ ...t, [activeChatLandlord]: [...(t[activeChatLandlord] ?? []), msg] }))
     setChatInput('')
-    setTimeout(() => {
-      setChatThreads(t => ({
-        ...t,
-        [activeChatLandlord]: [...(t[activeChatLandlord] ?? []), { from: 'landlord', text: "Thanks for your message! I'll get back to you shortly." }],
-      }))
-    }, 900)
   }
 
   const activeMsgs = chatThreads[activeChatLandlord] ?? []
