@@ -775,6 +775,16 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
               listing={landlordView}
               onBack={() => setPage('listings')}
               backLabel="← Back to My Listings"
+              currentTenants={leases
+                .filter((lease) => lease.status === 'active' && (
+                  lease.propertyId === String(landlordView.propertyId || landlordView.id) ||
+                  lease.propertyCode === String(landlordView.propertyId || landlordView.id) ||
+                  lease.propertyTitle === landlordView.title
+                ))
+                .map((lease) => ({
+                  name: lease.studentName || (lease.studentId ? `Student ${lease.studentId}` : 'Current tenant'),
+                  studentId: lease.studentId,
+                }))}
               actions={
                 <button onClick={() => { openEdit(landlordView.id); setPage('edit-listing') }} className="w-full bg-[#111827] text-white text-sm font-semibold py-3 rounded-xl hover:bg-[#1f2937] transition-colors">
                   Edit this listing

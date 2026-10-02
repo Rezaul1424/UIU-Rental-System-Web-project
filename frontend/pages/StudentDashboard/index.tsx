@@ -710,6 +710,16 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
                 onBack={() => setPage('browse')}
                 isFavorited={favorites.includes(viewListing.id)}
                 onToggleFavorite={() => toggleFavorite(viewListing.id)}
+                currentTenants={leases
+                  .filter((lease) => lease.status === 'active' && (
+                    lease.propertyId === String(viewListing.propertyId || viewListing.id) ||
+                    lease.propertyCode === String(viewListing.propertyId || viewListing.id) ||
+                    lease.propertyTitle === viewListing.title
+                  ))
+                  .map((lease) => ({
+                    name: lease.landlordName ? `Landlord: ${lease.landlordName}` : 'Current tenant',
+                    studentId: lease.id,
+                  }))}
                 actions={
                   <>
                     <button

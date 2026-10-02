@@ -18,7 +18,7 @@ export const listingPins: Record<number, { x: number; y: number }> = {
   4: { x: 57, y: 52 }, 5: { x: 46, y: 38 }, 6: { x: 70, y: 56 },
 }
 
-export default function ListingDetailPage({ listing, onBack, backLabel = '← Back', actions, isFavorited, onToggleFavorite, onPropertyIdClick }: {
+export default function ListingDetailPage({ listing, onBack, backLabel = '← Back', actions, isFavorited, onToggleFavorite, onPropertyIdClick, currentTenants = [] }: {
   listing: Listing
   onBack: () => void
   backLabel?: string
@@ -26,6 +26,7 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
   isFavorited?: boolean
   onToggleFavorite?: () => void
   onPropertyIdClick?: () => void
+  currentTenants?: Array<{ name: string; studentId?: string }>
 }) {
   const [carouselIdx, setCarouselIdx] = useState(0)
   const [showReviewsModal, setShowReviewsModal] = useState(false)
@@ -268,6 +269,31 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
                 <span className="font-medium text-[#1a1a18] text-right">{v}</span>
               </div>
             ))}
+          </div>
+
+          {/* Current tenants */}
+          <div className="bg-white rounded-2xl p-5 shadow-sm">
+            <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Current Tenants</div>
+            {currentTenants.length === 0 ? (
+              <div className="text-sm text-gray-400">No current tenants assigned to this property.</div>
+            ) : (
+              <div className="space-y-3">
+                {currentTenants.map((tenant) => (
+                  <div key={`${tenant.name}-${tenant.studentId ?? 'id'}`} className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-8 h-8 rounded-full bg-[#111827] text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
+                        {(tenant.name || 'T')[0].toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-[#1a1a18] truncate">{tenant.name}</div>
+                        {tenant.studentId && <div className="text-[11px] text-gray-500">Student ID: {tenant.studentId}</div>}
+                      </div>
+                    </div>
+                    <span className="text-[10px] uppercase tracking-wide font-semibold bg-emerald-50 text-emerald-700 px-2 py-1 rounded-full">Current</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* CTA */}

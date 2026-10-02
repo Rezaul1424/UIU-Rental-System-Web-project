@@ -7,9 +7,10 @@ type ListingDetailViewPageProps = {
   isFavorited: boolean
   onToggleFavorite: () => void
   actions: React.ReactNode
+  currentTenants?: Array<{ name: string; studentId?: string }>
 }
 
-export default function ListingDetailViewPage({ listing, onBack, isFavorited, onToggleFavorite, actions }: ListingDetailViewPageProps) {
+export default function ListingDetailViewPage({ listing, onBack, isFavorited, onToggleFavorite, actions, currentTenants }: ListingDetailViewPageProps) {
   return (
     <ListingDetailPage
       listing={listing}
@@ -18,6 +19,7 @@ export default function ListingDetailViewPage({ listing, onBack, isFavorited, on
       isFavorited={isFavorited}
       onToggleFavorite={onToggleFavorite}
       actions={actions}
+      currentTenants={currentTenants}
     />
   )
 }
