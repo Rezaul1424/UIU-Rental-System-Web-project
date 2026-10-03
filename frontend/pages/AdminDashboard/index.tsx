@@ -1,10 +1,37 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Listing } from '../../types'
-import { listings, maintenanceRequests, EXT_LANDLORDS, EXT_STUDENTS } from '../../data'
+import { listings } from '../../data'
 import type { LandlordRow, StudentRow, SortDir } from '../../data'
+import {
+  createAdminCategory,
+  deleteAdminCategory,
+  fetchAdminAccounts,
+  fetchAdminComplaint,
+  fetchAdminComplaints,
+  fetchAdminCategories,
+  fetchAdminConversations,
+  fetchAdminListings,
+  fetchAdminNotifications,
+  fetchAdminReportData,
+  renameAdminCategory,
+  replyToAdminComplaint,
+  setAdminAccountStatus,
+  setAdminListingCategory,
+  setAdminListingModerationStatus,
+  markAdminNotificationsRead,
+  updateAdminComplaintStatus,
+  type AdminAccount,
+  type AdminAccountStatus,
+  type AdminCategory,
+  type AdminComplaintStatus,
+  type AdminConversation,
+  type AdminListing,
+  type AdminModerationStatus,
+  type AdminNotification,
+  type AdminReportData,
+} from '../../api/admin'
 import ListingDetailPage from '../../components/ListingDetail'
 import NotificationBell from '../../components/NotificationBell'
-import { adminNotifs } from './constants'
 import AdminSidebarNav, { type AdminPage } from './Sidebar'
 import OverviewPage from './Overview'
 import LandlordsPage from './Landlords'
@@ -14,46 +41,109 @@ import ReportsPage from './Reports'
 import ChatMonitorPage from './ChatMonitor'
 import ComplaintsPage from './Complaints'
 import SettingsPage from './Settings'
-import type { AdminComplaint, AdminComplaintThreadMessage, AdminChatConversation } from './types'
+import type { AdminComplaint } from './types'
+
+function registrationDate(value?: string): string {
+  return value ? new Date(value).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
+}
+
+function toLandlordRow(account: AdminAccount): LandlordRow {
+  return {
+    id: account.id,
+    name: account.name,
+    email: account.email,
+    phone: '—',
+    address: '—',
+    properties: account.propertyCount ?? 0,
+    status: account.status,
+    regDate: registrationDate(account.createdAt),
+  }
+}
+
+function toStudentRow(account: AdminAccount): StudentRow {
+  const applicationCount = account.applicationCount ?? 0
+  return {
+    id: account.id,
+    name: account.name,
+    university: 'UIU',
+    email: account.email,
+    phone: '—',
+    rentalStatus: applicationCount > 0 ? 'Searching' : 'No Application',
+    applications: applicationCount,
+    status: account.status,
+    regDate: registrationDate(account.createdAt),
+  }
+}
+
+function notificationAge(value: string): string {
+  const minutes = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60_000))
+  if (minutes < 60) return `${minutes} min ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} hr ago`
+  return `${Math.floor(hours / 24)} day${Math.floor(hours / 24) === 1 ? '' : 's'} ago`
+}
+
+function mapAdminNotification(notification: AdminNotification) {
+  return {
+    id: notification.id,
+    text: notification.title,
+    sub: notification.message,
+    time: notificationAge(notification.createdAt),
+    read: notification.isRead,
+  }
+}
 
 export default function AdminDashboard({ userName, onSignOut }: { userName: string; onSignOut: () => void }) {
   const [page, setPage] = useState<AdminPage>('overview')
   const [adminSignOutConfirm, setAdminSignOutConfirm] = useState(false)
   const [adminListingView, setAdminListingView] = useState<Listing | null>(null)
-  const openAdminListing = (l: Listing) => { setAdminListingView(l); setPage('listing-detail') }
+  const openAdminListing = (listing: AdminListing) => {
+    const numericId = Number(listing.propertyCode.match(/\d+$/)?.[0] ?? 0)
+    setAdminListingView({
+      id: numericId,
+      propertyId: listing.propertyCode,
+      title: listing.title,
+      landlord: listing.landlordName,
+      type: listing.categoryName ?? 'Property',
+      distance: '—',
+      price: listing.priceBDT,
+      status: listing.availabilityStatus,
+      facilities: [],
+      image: 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800&h=500&fit=crop&auto=format',
+      parking: 'Not Available',
+      description: `Moderation status: ${listing.moderationStatus}`,
+    })
+    setPage('listing-detail')
+  }
 
-  const [categories, setCategories] = useState(['Single', 'Shared', 'Mess', 'Sublet'])
+  const [categories, setCategories] = useState<AdminCategory[]>([])
+  const [adminListings, setAdminListings] = useState<AdminListing[]>([])
   const [newCat, setNewCat] = useState('')
+  const [notifications, setNotifications] = useState<AdminNotification[]>([])
 
-  const [adminComplaints] = useState<AdminComplaint[]>([
-    { id: 'CMP-001', from: 'Tanvir Ahmed', fromType: 'Student', against: 'Rahman Faruk', property: 'Studio near Gate 3', category: 'Maintenance Neglect', date: '22 Jul 2026', status: 'Under Review', description: 'Reported the AC issue on July 10th but no response received from the landlord.' },
-    { id: 'CMP-002', from: 'Rahman Faruk', fromType: 'Landlord', against: 'Sadia Islam', property: 'Shared Mess – South Campus', category: 'Late Payment', date: '18 Jul 2026', status: 'Submitted', description: 'Rent for July 2026 has not been paid despite multiple reminders.' },
-    { id: 'CMP-003', from: 'Sadia Islam', fromType: 'Student', against: 'Nusrat Jahan', property: 'Shared Mess – South Campus', category: 'Privacy Violation', date: '10 Jul 2026', status: 'Responded', description: 'Landlord entered the room without prior notice on multiple occasions.' },
-  ])
+  const [adminComplaints, setAdminComplaints] = useState<AdminComplaint[]>([])
   const [selectedComplaint, setSelectedComplaint] = useState<AdminComplaint | null>(null)
   const [complaintReply, setComplaintReply] = useState('')
-  const [complaintThreads, setComplaintThreads] = useState<Record<string, AdminComplaintThreadMessage[]>>({
-    'CMP-001': [{ from: 'Admin', text: 'We have received your complaint and are reviewing it.', date: '23 Jul 2026' }],
-    'CMP-003': [{ from: 'Admin', text: 'We have contacted the landlord regarding this matter.', date: '11 Jul 2026' }, { from: 'Sadia Islam', text: 'Thank you for the quick response.', date: '11 Jul 2026' }],
-  })
+  const [complaintsError, setComplaintsError] = useState('')
+  const [isLoadingComplaints, setIsLoadingComplaints] = useState(false)
+  const [complaintsRetry, setComplaintsRetry] = useState(0)
   const [cStatusFilter, setCStatusFilter] = useState<'all' | 'Submitted' | 'Under Review' | 'Responded' | 'Resolved' | 'Closed'>('all')
   const [cSearch, setCSearch] = useState('')
 
-  const chatConversations: AdminChatConversation[] = [
-    { id: 'CH-001', student: 'Tanvir Ahmed', landlord: 'Rahman Faruk', property: 'Studio near Gate 3', propertyId: 'UIU-1001', lastMsg: '31 Jul 2026', status: 'Active', msgs: [{ from: 'student', text: 'Hello! How can I help you today?', time: '10:00' }, { from: 'landlord', text: 'I wanted to ask about the parking availability.', time: '10:05' }, { from: 'landlord', text: 'Yes, we have one parking spot included with your unit.', time: '10:06' }] },
-    { id: 'CH-002', student: 'Sadia Islam', landlord: 'Nusrat Jahan', property: 'Shared Mess – South Campus', propertyId: 'UIU-1002', lastMsg: '29 Jul 2026', status: 'Active', msgs: [{ from: 'student', text: 'Is the mess still accepting new students?', time: '09:00' }, { from: 'landlord', text: 'Yes, we have 2 spots available from August.', time: '09:15' }] },
-    { id: 'CH-003', student: 'Rifat Hassan', landlord: 'Karim Abdullah', property: 'Sublet – Bashundhara R/A', propertyId: 'UIU-1003', lastMsg: '27 Jul 2026', status: 'Inactive', msgs: [{ from: 'student', text: 'What is the earliest move-in date?', time: '14:00' }, { from: 'landlord', text: 'You can move in from August 1st.', time: '14:30' }] },
-  ]
-  const [selectedChat, setSelectedChat] = useState<AdminChatConversation | null>(null)
+  const [chatConversations, setChatConversations] = useState<AdminConversation[]>([])
+  const [selectedChat, setSelectedChat] = useState<AdminConversation | null>(null)
   const [chatMonitorSearch, setChatMonitorSearch] = useState('')
+  const [chatMonitorError, setChatMonitorError] = useState('')
+  const [isLoadingChats, setIsLoadingChats] = useState(false)
+  const [chatMonitorRetry, setChatMonitorRetry] = useState(0)
 
   const [catFilter, setCatFilter] = useState('all')
   const [catSearch, setCatSearch] = useState('')
   const [catSort, setCatSort] = useState<'title' | 'price' | 'status'>('title')
 
-  const [lRows, setLRows] = useState<LandlordRow[]>(EXT_LANDLORDS)
+  const [lRows, setLRows] = useState<LandlordRow[]>([])
   const [lSearch, setLSearch] = useState('')
-  const [lFilter, setLFilter] = useState<'all' | 'active' | 'pending' | 'suspended'>('all')
+  const [lFilter, setLFilter] = useState<'all' | 'active' | 'pending' | 'suspended' | 'deactivated'>('all')
   const [lSortKey, setLSortKey] = useState<keyof LandlordRow>('name')
   const [lSortDir, setLSortDir] = useState<SortDir>('asc')
   const [lPage, setLPage] = useState(1)
@@ -79,13 +169,223 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
   const lPagedRows = lSorted.slice((lPage - 1) * L_PAGE, lPage * L_PAGE)
   const lProfile = lRows.find(r => r.id === lProfileId)
 
-  const approveLandlordRow = (id: string) => setLRows(rs => rs.map(r => r.id === id ? { ...r, status: 'active' } : r))
-  const suspendLandlordRow = (id: string) => setLRows(rs => rs.map(r => r.id === id ? { ...r, status: 'suspended' } : r))
-  const removeLandlordRow = (id: string) => { setLRows(rs => rs.filter(r => r.id !== id)); setLProfileId(null) }
+  const [adminError, setAdminError] = useState('')
+  const [isLoadingAccounts, setIsLoadingAccounts] = useState(true)
+  const [reports, setReports] = useState<AdminReportData | null>(null)
+  const [reportsError, setReportsError] = useState('')
+  const [isLoadingReports, setIsLoadingReports] = useState(false)
+  const [reportsRetry, setReportsRetry] = useState(0)
 
-  const [sRows, setSRows] = useState<StudentRow[]>(EXT_STUDENTS)
+  useEffect(() => {
+    let mounted = true
+    Promise.all([
+      fetchAdminAccounts('landlord'),
+      fetchAdminAccounts('student'),
+      fetchAdminCategories(),
+      fetchAdminListings(),
+    ])
+      .then(([landlords, students, loadedCategories, loadedListings]) => {
+        if (!mounted) return
+        setLRows(landlords.map(toLandlordRow))
+        setSRows(students.map(toStudentRow))
+        setCategories(loadedCategories)
+        setAdminListings(loadedListings)
+      })
+      .catch((error: unknown) => {
+        if (mounted) setAdminError(error instanceof Error ? error.message : 'Could not load administrator data.')
+      })
+      .finally(() => {
+        if (mounted) setIsLoadingAccounts(false)
+      })
+    return () => { mounted = false }
+  }, [])
+
+  useEffect(() => {
+    let mounted = true
+    fetchAdminNotifications()
+      .then(data => { if (mounted) setNotifications(data) })
+      .catch((error: unknown) => {
+        if (mounted) setAdminError(error instanceof Error ? error.message : 'Could not load notifications.')
+      })
+    return () => { mounted = false }
+  }, [])
+
+  const markNotificationRead = async (id: number) => {
+    setNotifications(items => items.map(item => item.id === id ? { ...item, isRead: true } : item))
+    try {
+      await markAdminNotificationsRead(id)
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : 'Could not mark notification as read.')
+    }
+  }
+
+  const markAllNotificationsRead = async () => {
+    setNotifications(items => items.map(item => ({ ...item, isRead: true })))
+    try {
+      await markAdminNotificationsRead()
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : 'Could not mark notifications as read.')
+    }
+  }
+
+  useEffect(() => {
+    if (page !== 'reports' && page !== 'overview') return
+    let mounted = true
+    setIsLoadingReports(true)
+    setReportsError('')
+    fetchAdminReportData()
+      .then(data => { if (mounted) setReports(data) })
+      .catch((error: unknown) => {
+        if (mounted) setReportsError(error instanceof Error ? error.message : 'Could not load reports.')
+      })
+      .finally(() => { if (mounted) setIsLoadingReports(false) })
+    return () => { mounted = false }
+  }, [page, reportsRetry])
+
+  useEffect(() => {
+    if (page !== 'complaints') return
+    let mounted = true
+    setIsLoadingComplaints(true)
+    setComplaintsError('')
+    fetchAdminComplaints()
+      .then(data => { if (mounted) setAdminComplaints(data) })
+      .catch((error: unknown) => {
+        if (mounted) setComplaintsError(error instanceof Error ? error.message : 'Could not load complaints.')
+      })
+      .finally(() => { if (mounted) setIsLoadingComplaints(false) })
+    return () => { mounted = false }
+  }, [page, complaintsRetry])
+
+  useEffect(() => {
+    if (page !== 'chat-monitor') return
+    let mounted = true
+    setIsLoadingChats(true)
+    setChatMonitorError('')
+    fetchAdminConversations(chatMonitorSearch)
+      .then(data => { if (mounted) setChatConversations(data) })
+      .catch((error: unknown) => {
+        if (mounted) setChatMonitorError(error instanceof Error ? error.message : 'Could not load conversations.')
+      })
+      .finally(() => { if (mounted) setIsLoadingChats(false) })
+    return () => { mounted = false }
+  }, [page, chatMonitorSearch, chatMonitorRetry])
+
+  const selectComplaint = async (complaint: AdminComplaint) => {
+    try {
+      setComplaintsError('')
+      setSelectedComplaint(await fetchAdminComplaint(complaint.id))
+    } catch (error) {
+      setComplaintsError(error instanceof Error ? error.message : 'Could not load the complaint thread.')
+    }
+  }
+
+  const changeComplaintStatus = async (id: string, status: AdminComplaintStatus) => {
+    try {
+      setComplaintsError('')
+      const updated = await updateAdminComplaintStatus(id, status)
+      setAdminComplaints(items => items.map(item => item.id === id ? updated : item))
+      setSelectedComplaint(current => current?.id === id ? updated : current)
+    } catch (error) {
+      setComplaintsError(error instanceof Error ? error.message : 'Could not update the complaint status.')
+    }
+  }
+
+  const sendComplaintReply = async (id: string, message: string) => {
+    try {
+      setComplaintsError('')
+      const updated = await replyToAdminComplaint(id, message)
+      setAdminComplaints(items => items.map(item => item.id === id ? updated : item))
+      setSelectedComplaint(updated)
+    } catch (error) {
+      setComplaintsError(error instanceof Error ? error.message : 'Could not send the complaint reply.')
+      throw error
+    }
+  }
+
+  const changeAccountStatus = async (id: string, status: AdminAccountStatus) => {
+    const reason = window.prompt(`Enter a reason for changing this account to ${status}:`)
+    if (reason === null) return
+    if (reason.trim().length < 3) {
+      setAdminError('Please provide a reason with at least 3 characters.')
+      return
+    }
+    setAdminError('')
+    try {
+      const account = await setAdminAccountStatus(id, status, reason.trim())
+      setLRows(rows => rows.map(row => row.id === id ? { ...row, status: account.status } : row))
+      setSRows(rows => rows.map(row => row.id === id ? { ...row, status: account.status } : row))
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : 'Could not update this account.')
+    }
+  }
+
+  const approveLandlordRow = (id: string) => changeAccountStatus(id, 'active')
+  const suspendLandlordRow = (id: string) => changeAccountStatus(id, 'suspended')
+  const removeLandlordRow = (id: string) => changeAccountStatus(id, 'deactivated')
+
+  const addCategory = async (name: string) => {
+    try {
+      setAdminError('')
+      const category = await createAdminCategory(name)
+      setCategories(current => [...current, category].sort((left, right) => left.name.localeCompare(right.name)))
+      setNewCat('')
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : 'Could not create this category.')
+    }
+  }
+
+  const editCategory = async (id: string, name: string) => {
+    try {
+      setAdminError('')
+      const category = await renameAdminCategory(id, name)
+      setCategories(current => current.map(item => item.id === id ? category : item).sort((left, right) => left.name.localeCompare(right.name)))
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : 'Could not rename this category.')
+    }
+  }
+
+  const removeCategory = async (id: string) => {
+    try {
+      setAdminError('')
+      await deleteAdminCategory(id)
+      setCategories(current => current.filter(category => category.id !== id))
+      setAdminListings(current => current.map(listing => listing.categoryId === Number(id)
+        ? { ...listing, categoryId: undefined, categoryName: undefined }
+        : listing))
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : 'Could not delete this category.')
+    }
+  }
+
+  const moderateListing = async (identifier: string, status: AdminModerationStatus) => {
+    const reason = window.prompt(`Enter a reason for changing this listing to ${status}:`)
+    if (reason === null) return
+    if (reason.trim().length < 3) {
+      setAdminError('Please provide a reason with at least 3 characters.')
+      return
+    }
+    try {
+      setAdminError('')
+      const updated = await setAdminListingModerationStatus(identifier, status, reason.trim())
+      setAdminListings(current => current.map(listing => listing.propertyCode === identifier ? updated : listing))
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : 'Could not update this listing.')
+    }
+  }
+
+  const assignListingCategory = async (identifier: string, categoryId: number | null) => {
+    try {
+      setAdminError('')
+      const updated = await setAdminListingCategory(identifier, categoryId)
+      setAdminListings(current => current.map(listing => listing.propertyCode === identifier ? updated : listing))
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : 'Could not assign this category.')
+    }
+  }
+
+  const [sRows, setSRows] = useState<StudentRow[]>([])
   const [sSearch, setSSearch] = useState('')
-  const [sFilter, setSFilter] = useState<'all' | 'active' | 'pending' | 'suspended'>('all')
+  const [sFilter, setSFilter] = useState<'all' | 'active' | 'pending' | 'suspended' | 'deactivated'>('all')
   const [sSortKey, setSSortKey] = useState<keyof StudentRow>('name')
   const [sSortDir, setSSortDir] = useState<SortDir>('asc')
   const [sPage, setSPage] = useState(1)
@@ -111,9 +411,9 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
   const sPagedRows = sSorted.slice((sPage - 1) * S_PAGE, sPage * S_PAGE)
   const sProfile = sRows.find(r => r.id === sProfileId)
 
-  const approveStudentRow = (id: string) => setSRows(rs => rs.map(r => r.id === id ? { ...r, status: 'active' } : r))
-  const suspendStudentRow = (id: string) => setSRows(rs => rs.map(r => r.id === id ? { ...r, status: 'suspended' } : r))
-  const removeStudentRow = (id: string) => { setSRows(rs => rs.filter(r => r.id !== id)); setSProfileId(null) }
+  const approveStudentRow = (id: string) => changeAccountStatus(id, 'active')
+  const suspendStudentRow = (id: string) => changeAccountStatus(id, 'suspended')
+  const removeStudentRow = (id: string) => changeAccountStatus(id, 'deactivated')
 
   const pendingLandlords = lRows.filter(r => r.status === 'pending').length
   const pendingStudents = sRows.filter(r => r.status === 'pending').length
@@ -145,13 +445,22 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
         )}
 
         <div className="flex justify-end px-6 pt-5">
-          <NotificationBell notifications={adminNotifs} />
+          <NotificationBell
+            notifications={notifications.map(mapAdminNotification)}
+            onMarkRead={markNotificationRead}
+            onMarkAllRead={markAllNotificationsRead}
+          />
         </div>
 
         <div className="px-6 pb-6 max-w-6xl mx-auto space-y-6">
+          {adminError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{adminError}</div>}
+          {isLoadingAccounts && <div role="status" className="rounded-xl bg-white px-4 py-3 text-sm text-gray-500">Loading users from the database…</div>}
           {page === 'overview' && (
             <OverviewPage
-              listings={listings}
+              report={reports}
+              reportError={reportsError}
+              isLoadingReport={isLoadingReports}
+              onRetryReport={() => setReportsRetry(value => value + 1)}
               lRows={lRows}
               sRows={sRows}
               pendingLandlords={pendingLandlords}
@@ -206,11 +515,16 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
 
           {page === 'categories' && (
             <CategoriesPage
-              listings={listings}
+              listings={adminListings}
               categories={categories}
-              setCategories={setCategories}
               newCat={newCat}
               setNewCat={setNewCat}
+              isLoading={isLoadingAccounts}
+              onCreateCategory={addCategory}
+              onRenameCategory={editCategory}
+              onDeleteCategory={removeCategory}
+              onAssignCategory={assignListingCategory}
+              onModerateListing={moderateListing}
               catSearch={catSearch}
               setCatSearch={setCatSearch}
               catFilter={catFilter}
@@ -223,10 +537,10 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
 
           {page === 'reports' && (
             <ReportsPage
-              listings={listings}
-              lRows={lRows}
-              sRows={sRows}
-              maintenanceRequests={maintenanceRequests}
+              report={reports}
+              isLoading={isLoadingReports}
+              error={reportsError}
+              onRetry={() => setReportsRetry(value => value + 1)}
             />
           )}
 
@@ -241,18 +555,25 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
               setSelectedChat={setSelectedChat}
               chatMonitorSearch={chatMonitorSearch}
               setChatMonitorSearch={setChatMonitorSearch}
+              isLoading={isLoadingChats}
+              error={chatMonitorError}
+              onRetry={() => setChatMonitorRetry(value => value + 1)}
             />
           )}
 
           {page === 'complaints' && (
             <ComplaintsPage
               adminComplaints={adminComplaints}
+              isLoading={isLoadingComplaints}
+              error={complaintsError}
+              onRetry={() => setComplaintsRetry(value => value + 1)}
+              onSelectComplaint={selectComplaint}
+              onStatusChange={changeComplaintStatus}
+              onSendReply={sendComplaintReply}
               selectedComplaint={selectedComplaint}
               setSelectedComplaint={setSelectedComplaint}
               complaintReply={complaintReply}
               setComplaintReply={setComplaintReply}
-              complaintThreads={complaintThreads}
-              setComplaintThreads={setComplaintThreads}
               cStatusFilter={cStatusFilter}
               setCStatusFilter={setCStatusFilter}
               cSearch={cSearch}

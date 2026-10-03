@@ -43,6 +43,7 @@ type PropertyRow = RowDataPacket & {
   landlord_name: string;
   created_at: Date;
   updated_at: Date;
+  moderation_status: 'draft' | 'pending' | 'approved' | 'rejected' | 'suspended' | 'archived';
 };
 
 type ImageRow = RowDataPacket & {
@@ -131,7 +132,7 @@ function mapListing(row: PropertyRow, images: ImageRow[], amenities: AmenityRow[
     description: row.description ?? 'Rental property near UIU.',
     priceBDT: Math.round(Number(row.price)),
     currency: 'BDT',
-    status: row.distance_km === null ? 'draft' : 'approved',
+    status: row.moderation_status,
     bedrooms: row.bedroom_count ?? undefined,
     rooms: (row.bedroom_count ?? 0) + (row.living_count ?? 0) + (row.bathroom_count ?? 0) + (row.kitchen_count ?? 0) + (row.veranda_count ?? 0),
     roomSizesSqFt: Object.values(roomSizes).map(Number).filter((value) => value > 0),
@@ -155,7 +156,7 @@ function mapListing(row: PropertyRow, images: ImageRow[], amenities: AmenityRow[
 }
 
 function buildWhere(search: ListingSearch): { sql: string; params: unknown[] } {
-  const clauses = ["p.status = 'available'"];
+  const clauses = ["p.status = 'available'", "p.moderation_status = 'approved'"];
   const params: unknown[] = [];
   if (search.q) {
     clauses.push('(p.title LIKE CONCAT(\'%\', ?, \'%\') OR p.description LIKE CONCAT(\'%\', ?, \'%\') OR p.address_area LIKE CONCAT(\'%\', ?, \'%\'))');
@@ -196,7 +197,7 @@ export async function searchPublicListings(search: ListingSearch) {
 
 export async function getPublicListing(identifier: string): Promise<Listing | undefined> {
   if (useFixtures()) return testListings.find((listing) => listing.id === identifier);
-  const [rows] = await db.query<PropertyRow[]>('SELECT p.*, u.name AS landlord_name, a.latitude, a.longitude FROM properties p JOIN users u ON u.id = p.landlord_id LEFT JOIN addresses a ON a.property_id = p.id WHERE p.status = \'available\' AND (p.property_code = ? OR CAST(p.id AS CHAR) = ?) LIMIT 1', [identifier, identifier]);
+  const [rows] = await db.query<PropertyRow[]>('SELECT p.*, u.name AS landlord_name, a.latitude, a.longitude FROM properties p JOIN users u ON u.id = p.landlord_id LEFT JOIN addresses a ON a.property_id = p.id WHERE p.status = \'available\' AND p.moderation_status = \'approved\' AND (p.property_code = ? OR CAST(p.id AS CHAR) = ?) LIMIT 1', [identifier, identifier]);
   const row = rows[0];
   if (!row) return undefined;
   const [images] = await db.query<ImageRow[]>('SELECT property_id, id, image_url, is_primary FROM property_images WHERE property_id = ?', [row.id]);

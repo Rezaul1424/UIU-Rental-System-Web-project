@@ -6,6 +6,8 @@ import type { RowDataPacket } from 'mysql2';
 import { z } from 'zod';
 import type { Request, Response, NextFunction } from 'express';
 import { AppError } from '../errors/AppError.js';
+import { recordAuditEvent } from '../security/audit.js';
+import { notifyAdminsAboutPendingLandlord } from '../notifications/admin-repository.js';
 
 export const AuthRoleSchema = z.enum(['admin', 'landlord', 'student', 'guest']);
 export const AuthStatusSchema = z.enum(['active', 'pending', 'suspended', 'deactivated']);
@@ -42,6 +44,7 @@ const users = new Map<string, {
 
 const resetTokens = new Map<string, { email: string; expiresAt: number }>();
 const revokedTokens = new Set<string>();
+const issuedTokenUsers = new Map<string, string>();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'development-only-jwt-secret-change-this-value-1234';
 const persistentAuth = process.env.NODE_ENV !== 'test';
@@ -62,6 +65,13 @@ type DbUser = RowDataPacket & {
   role: AuthRole;
   status: AuthStatus;
   student_id?: string;
+};
+
+export type AdminUser = AuthUser & {
+  createdAt?: string;
+  updatedAt?: string;
+  propertyCount?: number;
+  applicationCount?: number;
 };
 
 type ResetRow = RowDataPacket & { user_id: number };
@@ -129,6 +139,7 @@ export async function registerUser(input: {
 }) {
   const email = normalizeEmail(input.email);
   const role = input.role ?? 'student';
+  const status: AuthStatus = role === 'landlord' ? 'pending' : 'active';
 
   if (persistentAuth) {
     const existing = await findPersistentUser(email);
@@ -137,9 +148,16 @@ export async function registerUser(input: {
     }
 
     const passwordHash = bcrypt.hashSync(input.password, 10);
-    await db.execute('INSERT INTO users (role, name, email, password_hash, student_id, status) VALUES (?, ?, ?, ?, ?, ?)', [role, input.name.trim(), email, passwordHash, input.studentId ?? null, 'active']);
+    await db.execute('INSERT INTO users (role, name, email, password_hash, student_id, status) VALUES (?, ?, ?, ?, ?, ?)', [role, input.name.trim(), email, passwordHash, input.studentId ?? null, status]);
     const user = await findPersistentUser(email);
     if (!user) throw new AppError(500, 'USER_REGISTRATION_FAILED', 'User registration failed');
+    await recordAuditEvent({
+      action: 'ACCOUNT_REGISTERED',
+      resourceType: 'user',
+      resourceId: user.id,
+      newState: { role: user.role, status: user.status },
+    });
+    if (role === 'landlord') await notifyAdminsAboutPendingLandlord(input.name.trim(), user.id);
     return { user };
   }
 
@@ -153,13 +171,21 @@ export async function registerUser(input: {
     email,
     password: input.password,
     role,
-    status: 'active',
+    status,
     studentId: input.studentId,
   });
 
   if (!user) {
     throw new AppError(500, 'USER_REGISTRATION_FAILED', 'User registration failed');
   }
+
+  await recordAuditEvent({
+    action: 'ACCOUNT_REGISTERED',
+    resourceType: 'user',
+    resourceId: user.id,
+    newState: { role: user.role, status: user.status },
+  });
+  if (role === 'landlord') await notifyAdminsAboutPendingLandlord(input.name.trim(), user.id);
 
   return {
     user: {
@@ -181,6 +207,7 @@ export async function verifyCredentials(email: string, password: string) {
     }
     if (user.status === 'suspended') throw new AppError(403, 'ACCOUNT_SUSPENDED', 'This account has been suspended');
     if (user.status === 'deactivated') throw new AppError(403, 'ACCOUNT_DEACTIVATED', 'This account is no longer active');
+    if (user.status === 'pending') throw new AppError(403, 'ACCOUNT_PENDING', 'This account is awaiting approval');
     return toAuthUser({ ...user, studentId: user.student_id });
   }
 
@@ -203,6 +230,10 @@ export async function verifyCredentials(email: string, password: string) {
     throw new AppError(403, 'ACCOUNT_DEACTIVATED', 'This account is no longer active');
   }
 
+  if (user.status === 'pending') {
+    throw new AppError(403, 'ACCOUNT_PENDING', 'This account is awaiting approval');
+  }
+
   return {
     id: user.id,
     name: user.name,
@@ -217,6 +248,7 @@ export async function createAuthToken(user: AuthUser): Promise<string> {
   const token = jwt.sign({ sub: user.id, role: user.role, email: user.email }, JWT_SECRET, {
     expiresIn: '12h',
   });
+  issuedTokenUsers.set(token, user.id);
   if (persistentAuth) {
     await db.execute('INSERT INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 12 HOUR))', [randomUUID(), Number(user.id), hashToken(token)]);
   }
@@ -227,6 +259,20 @@ export async function revokeAuthToken(token: string): Promise<void> {
   revokedTokens.add(token);
   if (persistentAuth) {
     await db.execute('UPDATE auth_sessions SET revoked_at = NOW() WHERE token_hash = ?', [hashToken(token)]);
+  }
+}
+
+export async function revokeUserTokens(userId: string | number): Promise<void> {
+  const normalizedUserId = String(userId);
+
+  for (const [token, tokenUserId] of issuedTokenUsers) {
+    if (tokenUserId === normalizedUserId) {
+      revokedTokens.add(token);
+    }
+  }
+
+  if (persistentAuth) {
+    await db.execute('UPDATE auth_sessions SET revoked_at = NOW() WHERE user_id = ? AND revoked_at IS NULL', [Number(userId)]);
   }
 }
 
@@ -244,6 +290,122 @@ export async function getUserByEmail(email: string): Promise<AuthUser | undefine
     status: user.status,
     studentId: user.studentId,
   };
+}
+
+function toAdminUser(user: {
+  id: string | number;
+  name: string;
+  email: string;
+  role: AuthRole;
+  status: AuthStatus;
+  studentId?: string | null;
+  created_at?: Date | string;
+  updated_at?: Date | string;
+  property_count?: number | string;
+  application_count?: number | string;
+}): AdminUser {
+  return {
+    ...toAuthUser(user),
+    createdAt: user.created_at ? new Date(user.created_at).toISOString() : undefined,
+    updatedAt: user.updated_at ? new Date(user.updated_at).toISOString() : undefined,
+    propertyCount: user.property_count === undefined ? undefined : Number(user.property_count),
+    applicationCount: user.application_count === undefined ? undefined : Number(user.application_count),
+  };
+}
+
+export async function listAdminUsers(options: {
+  page: number;
+  limit: number;
+  q?: string;
+  role?: AuthRole;
+  status?: AuthStatus;
+  sortBy: 'createdAt' | 'name' | 'email' | 'status';
+  sortDirection: 'asc' | 'desc';
+}) {
+  if (!persistentAuth) {
+    const query = options.q?.toLowerCase();
+    const filtered = [...users.values()]
+      .filter((user) => !query || `${user.name} ${user.email}`.toLowerCase().includes(query))
+      .filter((user) => !options.role || user.role === options.role)
+      .filter((user) => !options.status || user.status === options.status)
+      .sort((left, right) => {
+        const leftValue = options.sortBy === 'name' ? left.name : options.sortBy === 'email' ? left.email : options.sortBy === 'status' ? left.status : left.id;
+        const rightValue = options.sortBy === 'name' ? right.name : options.sortBy === 'email' ? right.email : options.sortBy === 'status' ? right.status : right.id;
+        return leftValue.localeCompare(rightValue) * (options.sortDirection === 'asc' ? 1 : -1);
+      });
+    const start = (options.page - 1) * options.limit;
+    return {
+      data: filtered.slice(start, start + options.limit).map((user) => toAdminUser(user)),
+      totalItems: filtered.length,
+    };
+  }
+
+  const direction = options.sortDirection.toUpperCase();
+  const sortColumn = {
+    createdAt: 'u.created_at',
+    name: 'u.name',
+    email: 'u.email',
+    status: 'u.status',
+  }[options.sortBy];
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+  if (options.q) {
+    clauses.push('(u.name LIKE CONCAT(\'%\', ?, \'%\') OR u.email LIKE CONCAT(\'%\', ?, \'%\'))');
+    params.push(options.q, options.q);
+  }
+  if (options.role) { clauses.push('u.role = ?'); params.push(options.role); }
+  if (options.status) { clauses.push('u.status = ?'); params.push(options.status); }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  const [countRows] = await db.query<RowDataPacket[]>(`SELECT COUNT(*) AS total FROM users u ${where}`, params);
+  const [rows] = await db.query<DbUser[]>(
+    `SELECT u.id, u.name, u.email, u.role, u.status, u.student_id, u.created_at, u.updated_at,
+      (SELECT COUNT(*) FROM properties p WHERE p.landlord_id = u.id) AS property_count,
+      (SELECT COUNT(*) FROM applications a WHERE a.student_id = u.id OR a.landlord_id = u.id) AS application_count
+     FROM users u ${where} ORDER BY ${sortColumn} ${direction}, u.id ASC LIMIT ? OFFSET ?`,
+    [...params, options.limit, (options.page - 1) * options.limit],
+  );
+  return {
+    data: rows.map((user) => toAdminUser({ ...user, studentId: user.student_id })),
+    totalItems: Number(countRows[0]?.total ?? 0),
+  };
+}
+
+export async function getAdminUserById(id: string): Promise<AdminUser | undefined> {
+  if (!persistentAuth) {
+    const user = users.get(id) ?? [...users.values()].find((candidate) => candidate.id === id);
+    return user ? toAdminUser(user) : undefined;
+  }
+
+  const [rows] = await db.query<DbUser[]>(
+    `SELECT u.id, u.name, u.email, u.role, u.status, u.student_id, u.created_at, u.updated_at,
+      (SELECT COUNT(*) FROM properties p WHERE p.landlord_id = u.id) AS property_count,
+      (SELECT COUNT(*) FROM applications a WHERE a.student_id = u.id OR a.landlord_id = u.id) AS application_count
+     FROM users u WHERE u.id = ? LIMIT 1`,
+    [id],
+  );
+  const user = rows[0];
+  return user ? toAdminUser({ ...user, studentId: user.student_id }) : undefined;
+}
+
+export async function updateAdminUserStatus(id: string, status: AuthStatus): Promise<{ user: AdminUser; previousStatus: AuthStatus } | undefined> {
+  const current = await getAdminUserById(id);
+  if (!current) return undefined;
+  const previousStatus = current.status;
+
+  if (persistentAuth) {
+    await db.execute('UPDATE users SET status = ? WHERE id = ?', [status, id]);
+  } else {
+    const user = [...users.values()].find((candidate) => candidate.id === id);
+    if (!user) return undefined;
+    user.status = status;
+  }
+
+  if (status === 'suspended' || status === 'deactivated') {
+    await revokeUserTokens(id);
+  }
+
+  const updated = await getAdminUserById(id);
+  return updated ? { user: updated, previousStatus } : undefined;
 }
 
 export async function requestPasswordReset(email: string) {
@@ -287,6 +449,7 @@ export async function confirmPasswordReset(token: string, newPassword: string) {
     if (!reset) throw new AppError(400, 'INVALID_RESET_TOKEN', 'This reset token is invalid or expired');
     await db.execute('UPDATE users SET password_hash = ? WHERE id = ?', [bcrypt.hashSync(newPassword, 10), reset.user_id]);
     await db.execute('UPDATE password_reset_tokens SET used_at = NOW() WHERE token_hash = ?', [hashToken(token)]);
+    await revokeUserTokens(reset.user_id);
     return { message: 'Password reset successfully' };
   }
 
@@ -309,6 +472,7 @@ export async function confirmPasswordReset(token: string, newPassword: string) {
   user.resetToken = undefined;
   user.resetTokenExpiresAt = undefined;
   resetTokens.delete(token);
+  await revokeUserTokens(user.id);
 
   return { message: 'Password reset successfully' };
 }
@@ -318,6 +482,15 @@ export async function deactivateAccount(user: AuthUser, password: string) {
     const currentUser = await findPersistentUserWithPassword(user.email);
     if (!currentUser || !bcrypt.compareSync(password, currentUser.password_hash)) throw new AppError(401, 'INVALID_CREDENTIALS', 'Invalid email or password');
     await db.execute("UPDATE users SET status = 'deactivated' WHERE id = ?", [currentUser.id]);
+    await revokeUserTokens(currentUser.id);
+    await recordAuditEvent({
+      actorId: currentUser.id,
+      action: 'ACCOUNT_DEACTIVATED',
+      resourceType: 'user',
+      resourceId: String(currentUser.id),
+      previousState: { status: currentUser.status },
+      newState: { status: 'deactivated' },
+    });
     return { user: toAuthUser({ ...currentUser, status: 'deactivated', studentId: currentUser.student_id }) };
   }
 
@@ -331,6 +504,15 @@ export async function deactivateAccount(user: AuthUser, password: string) {
   }
 
   currentUser.status = 'deactivated';
+  await revokeUserTokens(currentUser.id);
+  await recordAuditEvent({
+    actorId: currentUser.id,
+    action: 'ACCOUNT_DEACTIVATED',
+    resourceType: 'user',
+    resourceId: currentUser.id,
+    previousState: { status: 'active' },
+    newState: { status: 'deactivated' },
+  });
 
   return {
     user: {
@@ -349,6 +531,7 @@ export async function suspendUserByEmail(email: string) {
     const user = await findPersistentUser(email);
     if (!user) throw new AppError(404, 'USER_NOT_FOUND', 'User not found');
     await db.execute("UPDATE users SET status = 'suspended' WHERE email = ?", [normalizeEmail(email)]);
+    await revokeUserTokens(user.id);
     return { user: { ...user, status: 'suspended' as const } };
   }
 
@@ -358,6 +541,7 @@ export async function suspendUserByEmail(email: string) {
   }
 
   user.status = 'suspended';
+  await revokeUserTokens(user.id);
 
   return {
     user: {
@@ -396,6 +580,7 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
       if (!user) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
       if (user.status === 'suspended') throw new AppError(403, 'ACCOUNT_SUSPENDED', 'This account has been suspended');
       if (user.status === 'deactivated') throw new AppError(403, 'ACCOUNT_DEACTIVATED', 'This account is no longer active');
+      if (user.status === 'pending') throw new AppError(403, 'ACCOUNT_PENDING', 'This account is awaiting approval');
       req.user = user;
       next();
     }).catch(next);
@@ -426,7 +611,11 @@ export const authRouter = {
   verifyCredentials,
   createAuthToken,
   revokeAuthToken,
+  revokeUserTokens,
   getUserByEmail,
+  listAdminUsers,
+  getAdminUserById,
+  updateAdminUserStatus,
   requestPasswordReset,
   confirmPasswordReset,
   deactivateAccount,

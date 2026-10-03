@@ -30,7 +30,7 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
   const [carouselIdx, setCarouselIdx] = useState(0)
   const [showReviewsModal, setShowReviewsModal] = useState(false)
   const pin = listingPins[listing.id] ?? { x: 50, y: 50 }
-  const desc = listingDescriptions[listing.id] ?? 'A verified rental property near UIU campus.'
+  const desc = listing.description || listingDescriptions[listing.id] || 'A verified rental property near UIU campus.'
   const images = listing.images ?? [{ room: 'Property', url: listing.image }]
   const prevImg = () => setCarouselIdx(i => (i - 1 + images.length) % images.length)
   const nextImg = () => setCarouselIdx(i => (i + 1) % images.length)

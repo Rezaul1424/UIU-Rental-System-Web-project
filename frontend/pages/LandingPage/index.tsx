@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react'
 import type { Modal, Listing } from '../../types'
-import { listings, testimonials } from '../../data'
+import { testimonials } from '../../data'
+import { fetchPublicListings, type PublicListingSearch } from '../../api/listings'
 import ListingDetailPage from '../../components/ListingDetail'
 import UIULogo from '../../components/UIULogo'
 
-export default function LandingPage({ onModal, onBrowseAsGuest }: { onModal: (m: Modal) => void; onBrowseAsGuest: () => void }) {
+export default function LandingPage({ onModal, onBrowseAsGuest }: { onModal: (m: Modal) => void; onBrowseAsGuest: (search?: PublicListingSearch) => void }) {
   const [landingView, setLandingView] = useState<Listing | null>(null)
+  const [featuredListings, setFeaturedListings] = useState<Listing[]>([])
+  const [isLoadingListings, setIsLoadingListings] = useState(true)
+  const [listingLoadError, setListingLoadError] = useState('')
   const [location, setLocation] = useState('')
   const [propType, setPropType] = useState('')
   const [budget, setBudget] = useState('')
@@ -16,6 +20,33 @@ export default function LandingPage({ onModal, onBrowseAsGuest }: { onModal: (m:
     { id: 'how', label: 'How It Works', href: '#how' },
     { id: 'about', label: 'About Us', href: '#about' },
   ]
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetchPublicListings({}, controller.signal)
+      .then((availableListings) => {
+        setFeaturedListings(availableListings.slice(0, 3))
+        setIsLoadingListings(false)
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        setListingLoadError(error instanceof Error ? error.message : 'Could not load featured homes.')
+        setIsLoadingListings(false)
+      })
+    return () => controller.abort()
+  }, [])
+
+  const searchAsGuest = () => {
+    const maxPrice = budget.startsWith('Under') ? 3000
+      : budget.includes('3,000') ? 5000
+        : budget.includes('5,000') ? 8000
+          : undefined
+    onBrowseAsGuest({
+      query: location,
+      type: propType || undefined,
+      maxPrice,
+    })
+  }
 
   useEffect(() => {
     const sections = navItems.map(item => ({
@@ -76,8 +107,6 @@ export default function LandingPage({ onModal, onBrowseAsGuest }: { onModal: (m:
       </div>
     )
   }
-
-  const featuredListings = listings.filter(l => l.status === 'available').slice(0, 3)
 
   return (
     <div id="home" className="min-h-screen bg-white" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
@@ -174,7 +203,7 @@ export default function LandingPage({ onModal, onBrowseAsGuest }: { onModal: (m:
                 </select>
               </div>
               <button
-                onClick={onBrowseAsGuest}
+                onClick={searchAsGuest}
                 className="bg-[#1a1a18] text-white font-semibold px-7 py-2.5 rounded text-sm whitespace-nowrap hover:bg-[#333] transition-colors"
               >
                 Search Now
@@ -195,19 +224,29 @@ export default function LandingPage({ onModal, onBrowseAsGuest }: { onModal: (m:
               </div>
               <h2 className="text-[2rem] font-bold text-white tracking-tight">Our Popular Homes</h2>
             </div>
-            <button onClick={onBrowseAsGuest} className="flex items-center gap-2 text-sm font-medium text-white/60 hover:text-white transition-colors">
+            <button onClick={searchAsGuest} className="flex items-center gap-2 text-sm font-medium text-white/60 hover:text-white transition-colors">
               Explore All
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M4 10h12M10 4l6 6-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </button>
           </div>
 
           <div className="grid md:grid-cols-3 gap-5">
-            {featuredListings.map((l, i) => {
-              const cardImages = [
-                'https://images.unsplash.com/photo-1551361415-69c87624334f?w=600&h=380&fit=crop&auto=format',
-                'https://images.unsplash.com/photo-1540762693098-50320eb8a752?w=600&h=380&fit=crop&auto=format',
-                'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=600&h=380&fit=crop&auto=format',
-              ]
+            {listingLoadError && (
+              <div role="alert" className="md:col-span-3 rounded-xl bg-white/10 p-5 text-sm text-white/80">
+                Featured homes could not be loaded. You can still try browsing all listings.
+              </div>
+            )}
+            {!listingLoadError && isLoadingListings && (
+              <div className="md:col-span-3 rounded-xl bg-white/10 p-5 text-sm text-white/70">
+                Loading available homes…
+              </div>
+            )}
+            {!listingLoadError && !isLoadingListings && featuredListings.length === 0 && (
+              <div className="md:col-span-3 rounded-xl bg-white/10 p-5 text-sm text-white/70">
+                No homes are currently available.
+              </div>
+            )}
+            {featuredListings.map((l) => {
               return (
                 <div
                   key={l.id}
@@ -215,7 +254,7 @@ export default function LandingPage({ onModal, onBrowseAsGuest }: { onModal: (m:
                   onClick={() => setLandingView(l)}
                 >
                   <div className="h-52 overflow-hidden">
-                    <img src={cardImages[i] ?? l.image} alt={l.title} className="w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-300" />
+                    <img src={l.image} alt={l.title} className="w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-300" />
                   </div>
                   <div className="p-5">
                     <div className="flex items-center gap-1.5 mb-3">

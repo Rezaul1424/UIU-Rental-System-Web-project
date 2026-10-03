@@ -142,8 +142,8 @@ export const rentTransactions = [
   { id: 4, tenant: 'Sadia Islam', listing: 'Shared Mess – South Campus', amount: 2800, month: 'Jun 2026', paid: true },
 ]
 
-export type LandlordRow = { id: string; name: string; email: string; phone: string; address: string; properties: number; activeTenants: number; status: 'active' | 'pending' | 'suspended'; regDate: string }
-export type StudentRow  = { id: string; name: string; university: string; email: string; phone: string; rentalStatus: 'Active Lease' | 'Searching' | 'No Application'; applications: number; status: 'active' | 'pending' | 'suspended'; regDate: string }
+export type LandlordRow = { id: string; name: string; email: string; phone: string; address: string; properties: number; activeTenants?: number; status: 'active' | 'pending' | 'suspended' | 'deactivated'; regDate: string }
+export type StudentRow  = { id: string; name: string; university: string; email: string; phone: string; rentalStatus: 'Active Lease' | 'Searching' | 'No Application'; applications: number; status: 'active' | 'pending' | 'suspended' | 'deactivated'; regDate: string }
 export type SortDir = 'asc' | 'desc'
 
 export const EXT_LANDLORDS: LandlordRow[] = [

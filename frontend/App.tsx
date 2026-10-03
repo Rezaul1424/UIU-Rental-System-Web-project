@@ -7,12 +7,14 @@ import LandlordDashboard from './pages/LandlordDashboard'
 import StudentDashboard from './pages/StudentDashboard'
 import AppNav from './components/AppNav'
 import AuthModal from './components/AuthModal'
+import type { PublicListingSearch } from './api/listings'
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('landing')
   const [modal, setModal] = useState<Modal>(null)
   const [role, setRole] = useState<Role>('student')
   const [userName, setUserName] = useState('User')
+  const [guestSearch, setGuestSearch] = useState<PublicListingSearch>({})
 
   const handleAuth = (r: Role, name: string) => {
     setRole(r)
@@ -26,7 +28,8 @@ export default function App() {
     setRole('student')
   }
 
-  const handleBrowseAsGuest = () => {
+  const handleBrowseAsGuest = (search: PublicListingSearch = {}) => {
+    setGuestSearch(search)
     setRole('guest')
     setScreen('app')
   }
@@ -37,7 +40,7 @@ export default function App() {
       {screen === 'app' && role === 'guest' && (
         <div className="min-h-screen bg-gray-50">
           <AppNav role={role} userName={userName} onSignOut={handleSignOut} onModal={setModal} onBackToHome={() => setScreen('landing')} />
-          <GuestBrowse onModal={setModal} />
+          <GuestBrowse onModal={setModal} initialSearch={guestSearch} />
         </div>
       )}
       {screen === 'app' && role === 'admin' && <AdminDashboard userName={userName} onSignOut={handleSignOut} />}

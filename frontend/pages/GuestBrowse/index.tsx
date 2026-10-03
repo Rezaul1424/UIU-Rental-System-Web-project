@@ -1,18 +1,46 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Modal, Listing } from '../../types'
-import { listings } from '../../data'
+import { fetchPublicListings, type PublicListingSearch } from '../../api/listings'
 import { Badge } from '../../components/ui'
 import ListingDetailPage from '../../components/ListingDetail'
 import { CampusMap } from '../../components/Map'
 
-export default function GuestBrowse({ onModal }: { onModal: (m: Modal) => void }) {
-  const [typeFilter, setTypeFilter] = useState<'all' | 'Single' | 'Mess' | 'Shared' | 'Sublet'>('all')
+export default function GuestBrowse({ onModal, initialSearch = {} }: { onModal: (m: Modal) => void; initialSearch?: PublicListingSearch }) {
+  const [typeFilter, setTypeFilter] = useState<'all' | 'Single' | 'Mess' | 'Shared' | 'Sublet'>(
+    (initialSearch.type as 'Single' | 'Mess' | 'Shared' | 'Sublet' | undefined) ?? 'all',
+  )
+  const [listings, setListings] = useState<Listing[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [retryCount, setRetryCount] = useState(0)
   const [viewListing, setViewListing] = useState<Listing | null>(null)
   const [distFilter, setDistFilter] = useState<'all' | '0.5' | '1' | '2'>('all')
-  const [maxPrice, setMaxPrice] = useState(8000)
-  const [additionalFilters, setAdditionalFilters] = useState<string[]>([])
+  const [maxPrice, setMaxPrice] = useState(initialSearch.maxPrice ?? 8000)
+  const [additionalFilters, setAdditionalFilters] = useState<string[]>(initialSearch.facilities ?? [])
   const [bedroomFilter, setBedroomFilter] = useState<'any' | '1' | '2' | '3' | '4+'>('any')
   const [roommateFilter, setRoommateFilter] = useState<'any' | '1' | '2' | '3' | '4+'>('any')
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setIsLoading(true)
+    setLoadError('')
+    fetchPublicListings({
+      type: typeFilter === 'all' ? undefined : typeFilter,
+      maxPrice,
+      maxDistance: distFilter === 'all' ? undefined : Number(distFilter),
+      facilities: additionalFilters,
+      query: initialSearch.query,
+    }, controller.signal)
+      .then(setListings)
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        setLoadError(error instanceof Error ? error.message : 'Could not load listings.')
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoading(false)
+      })
+    return () => controller.abort()
+  }, [typeFilter, maxPrice, distFilter, additionalFilters, initialSearch.query, retryCount])
 
   const toggleAdditional = (f: string) =>
     setAdditionalFilters(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f])
@@ -186,14 +214,25 @@ export default function GuestBrowse({ onModal }: { onModal: (m: Modal) => void }
 
         {/* Listing rows */}
         <div className="p-4 space-y-3">
-          {filtered.length === 0 && (
+          {isLoading && (
+            <div role="status" className="text-center py-8 text-sm text-gray-500">Loading available homes…</div>
+          )}
+          {loadError && (
+            <div role="alert" className="text-center py-8 text-sm text-red-700 bg-red-50 rounded-xl">
+              <p>{loadError} Make sure the backend is running, then retry.</p>
+              <button onClick={() => setRetryCount((count) => count + 1)} className="mt-3 rounded-lg bg-red-700 px-4 py-2 font-semibold text-white hover:bg-red-800">
+                Retry
+              </button>
+            </div>
+          )}
+          {!isLoading && !loadError && filtered.length === 0 && (
             <div className="text-center py-20 text-gray-400">
               <div className="text-4xl mb-3">🔍</div>
               <div className="font-semibold text-gray-500">No listings match your filters</div>
               <div className="text-sm mt-1">Try adjusting the filters on the left</div>
             </div>
           )}
-          {filtered.map(l => (
+          {!isLoading && !loadError && filtered.map(l => (
             <div
               key={l.id}
               onClick={() => setViewListing(l)}

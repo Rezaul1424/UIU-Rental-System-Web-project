@@ -6,9 +6,14 @@ type ChatMonitorPageProps = {
   setSelectedChat: React.Dispatch<React.SetStateAction<AdminChatConversation | null>>
   chatMonitorSearch: string
   setChatMonitorSearch: React.Dispatch<React.SetStateAction<string>>
+  isLoading: boolean
+  error: string
+  onRetry: () => void
 }
 
-export default function ChatMonitorPage({ chatConversations, selectedChat, setSelectedChat, chatMonitorSearch, setChatMonitorSearch }: ChatMonitorPageProps) {
+export default function ChatMonitorPage({ chatConversations, selectedChat, setSelectedChat, chatMonitorSearch, setChatMonitorSearch, isLoading, error, onRetry }: ChatMonitorPageProps) {
+  const formatDate = (value: string) => new Date(value).toLocaleString()
+
   return (
     <>
       <div className="flex items-end justify-between">
@@ -32,12 +37,12 @@ export default function ChatMonitorPage({ chatConversations, selectedChat, setSe
               </div>
             </div>
             <div className="p-5 space-y-3 max-h-96 overflow-y-auto bg-gray-50">
-              {selectedChat.msgs.map((m, i) => (
-                <div key={i} className={`flex gap-3 ${m.from === 'landlord' ? 'flex-row-reverse' : ''}`}>
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${m.from === 'landlord' ? 'bg-amber-500 text-white' : 'bg-sky-500 text-white'}`}>{m.from === 'landlord' ? 'L' : 'S'}</div>
-                  <div className={`max-w-[70%] flex flex-col ${m.from === 'landlord' ? 'items-end' : 'items-start'}`}>
-                    <div className={`px-4 py-2.5 rounded-2xl text-sm ${m.from === 'landlord' ? 'bg-amber-50 text-[#1a1a18] rounded-tr-sm' : 'bg-white text-[#1a1a18] rounded-tl-sm shadow-sm'}`}>{m.text}</div>
-                    <div className="text-[10px] text-gray-400 mt-1">{m.from === 'landlord' ? selectedChat.landlord : selectedChat.student} · {m.time}</div>
+              {selectedChat.messages.map(message => (
+                <div key={message.id} className={`flex gap-3 ${message.from === 'landlord' ? 'flex-row-reverse' : ''}`}>
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${message.from === 'landlord' ? 'bg-amber-500 text-white' : 'bg-sky-500 text-white'}`}>{message.from === 'landlord' ? 'L' : 'S'}</div>
+                  <div className={`max-w-[70%] flex flex-col ${message.from === 'landlord' ? 'items-end' : 'items-start'}`}>
+                    <div className={`px-4 py-2.5 rounded-2xl text-sm ${message.from === 'landlord' ? 'bg-amber-50 text-[#1a1a18] rounded-tr-sm' : 'bg-white text-[#1a1a18] rounded-tl-sm shadow-sm'}`}>{message.text}</div>
+                    <div className="text-[10px] text-gray-400 mt-1">{message.senderName} · {formatDate(message.createdAt)}</div>
                   </div>
                 </div>
               ))}
@@ -68,9 +73,9 @@ export default function ChatMonitorPage({ chatConversations, selectedChat, setSe
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {chatConversations
-                .filter(c => !chatMonitorSearch || [c.student, c.landlord, c.property].some(s => s.toLowerCase().includes(chatMonitorSearch.toLowerCase())))
-                .map(c => (
+              {isLoading && <tr><td colSpan={7} className="px-5 py-8 text-center text-sm text-gray-500">Loading conversations…</td></tr>}
+              {!isLoading && chatConversations.length === 0 && <tr><td colSpan={7} className="px-5 py-8 text-center text-sm text-gray-400">No conversations found.</td></tr>}
+              {!isLoading && chatConversations.map(c => (
                   <tr key={c.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-5 py-3 font-mono text-xs text-gray-400">{c.id}</td>
                     <td className="px-5 py-3 font-medium text-[#1a1a18]">{c.student}</td>
@@ -79,7 +84,7 @@ export default function ChatMonitorPage({ chatConversations, selectedChat, setSe
                       <div className="text-gray-600 text-xs">{c.property}</div>
                       <div className="font-mono text-[10px] text-gray-400">{c.propertyId}</div>
                     </td>
-                    <td className="px-5 py-3 text-gray-400 text-xs">{c.lastMsg}</td>
+                    <td className="px-5 py-3 text-gray-400 text-xs">{formatDate(c.lastMessageAt)}</td>
                     <td className="px-5 py-3">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${c.status === 'Active' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>{c.status}</span>
                     </td>
@@ -90,6 +95,7 @@ export default function ChatMonitorPage({ chatConversations, selectedChat, setSe
                 ))}
             </tbody>
           </table>
+          {error && <div role="alert" className="flex items-center justify-between gap-3 border-t border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700"><span>{error}</span><button onClick={onRetry} className="font-semibold underline">Retry</button></div>}
         </div>
       )}
     </>

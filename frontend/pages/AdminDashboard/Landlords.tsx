@@ -7,8 +7,8 @@ type LandlordsPageProps = {
   lRows: LandlordRow[]
   lSearch: string
   setLSearch: React.Dispatch<React.SetStateAction<string>>
-  lFilter: 'all' | 'active' | 'pending' | 'suspended'
-  setLFilter: React.Dispatch<React.SetStateAction<'all' | 'active' | 'pending' | 'suspended'>>
+  lFilter: 'all' | 'active' | 'pending' | 'suspended' | 'deactivated'
+  setLFilter: React.Dispatch<React.SetStateAction<'all' | 'active' | 'pending' | 'suspended' | 'deactivated'>>
   lSortKey: keyof LandlordRow
   lSortDir: SortDir
   handleLSort: (key: keyof LandlordRow) => void
@@ -47,7 +47,7 @@ export default function LandlordsPage({ lRows, lSearch, setLSearch, lFilter, set
               className="flex-1 min-w-48 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#1a1a18]"
             />
             <div className="flex gap-1">
-              {(['all', 'active', 'pending', 'suspended'] as const).map(f => (
+              {(['all', 'active', 'pending', 'suspended', 'deactivated'] as const).map(f => (
                 <button key={f} onClick={() => { setLFilter(f); setLPage(1) }} className={`text-xs px-3 py-1.5 rounded-full border font-medium capitalize transition-all ${lFilter === f ? 'bg-[#111827] text-white border-[#111827]' : 'bg-white text-gray-500 border-gray-200 hover:border-[#111827]'}`}>
                   {f}
                 </button>
@@ -85,7 +85,7 @@ export default function LandlordsPage({ lRows, lSearch, setLSearch, lFilter, set
                       <td className="px-3 py-3 text-xs text-gray-600 whitespace-nowrap">{r.phone}</td>
                       <td className="px-3 py-3 text-xs text-gray-500 max-w-[140px] truncate">{r.address}</td>
                       <td className="px-3 py-3 text-center text-xs font-semibold text-[#1a1a18]">{r.properties}</td>
-                      <td className="px-3 py-3 text-center text-xs font-semibold text-[#1a1a18]">{r.activeTenants}</td>
+                      <td className="px-3 py-3 text-center text-xs font-semibold text-[#1a1a18]">{r.activeTenants ?? '—'}</td>
                       <td className="px-3 py-3"><Badge variant={statusVariant(r.status)}>{r.status}</Badge></td>
                       <td className="px-3 py-3 text-xs text-gray-500 whitespace-nowrap font-mono">{r.regDate}</td>
                       <td className="px-3 py-3">
@@ -123,7 +123,7 @@ export default function LandlordsPage({ lRows, lSearch, setLSearch, lFilter, set
           <div className="grid sm:grid-cols-2 gap-5">
             <div className="bg-white rounded-2xl p-6 shadow-sm space-y-0 divide-y divide-gray-100">
               <div className="pb-3 font-semibold text-[#1a1a18]">Account Details</div>
-              {([['Landlord ID', lProfile.id], ['Full Name', lProfile.name], ['Email', lProfile.email], ['Phone', lProfile.phone], ['Address', lProfile.address], ['Properties Listed', String(lProfile.properties)], ['Active Tenants', String(lProfile.activeTenants)], ['Registration Date', lProfile.regDate]] as [string, string][]).map(([k, v]) => (
+              {([['Landlord ID', lProfile.id], ['Full Name', lProfile.name], ['Email', lProfile.email], ['Phone', lProfile.phone], ['Address', lProfile.address], ['Properties Listed', String(lProfile.properties)], ['Active Tenants', String(lProfile.activeTenants ?? '—')], ['Registration Date', lProfile.regDate]] as [string, string][]).map(([k, v]) => (
                 <div key={k} className="flex justify-between py-2.5 text-sm">
                   <span className="text-gray-500">{k}</span>
                   <span className="font-medium text-[#1a1a18]">{v}</span>
@@ -141,7 +141,7 @@ export default function LandlordsPage({ lRows, lSearch, setLSearch, lFilter, set
                   {lProfile.status === 'pending' && <button onClick={() => approveLandlordRow(lProfile.id)} className="text-xs bg-[#111827] text-white px-4 py-2 rounded-xl hover:bg-[#1f2937] font-semibold transition-colors">Approve Account</button>}
                   {lProfile.status === 'active' && <button onClick={() => suspendLandlordRow(lProfile.id)} className="text-xs border border-amber-300 text-amber-700 px-4 py-2 rounded-xl hover:bg-amber-50 font-semibold transition-colors">Suspend Account</button>}
                   {lProfile.status === 'suspended' && <button onClick={() => approveLandlordRow(lProfile.id)} className="text-xs bg-emerald-600 text-white px-4 py-2 rounded-xl hover:bg-emerald-700 font-semibold transition-colors">Reinstate Account</button>}
-                  <button onClick={() => removeLandlordRow(lProfile.id)} className="text-xs border border-red-300 text-red-600 px-4 py-2 rounded-xl hover:bg-red-50 font-semibold transition-colors">Remove Account</button>
+                  {lProfile.status !== 'deactivated' && <button onClick={() => removeLandlordRow(lProfile.id)} className="text-xs border border-red-300 text-red-600 px-4 py-2 rounded-xl hover:bg-red-50 font-semibold transition-colors">Deactivate Account</button>}
                 </div>
               </div>
             </div>
