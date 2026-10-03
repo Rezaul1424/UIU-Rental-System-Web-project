@@ -8,6 +8,7 @@ import {
   requestPasswordReset,
   confirmPasswordReset,
   deactivateAccount,
+  changePassword,
   suspendUserByEmail,
   requireAuth,
   revokeAuthToken,
@@ -49,6 +50,11 @@ const confirmResetSchema = z.object({
 const deactivateSchema = z.object({
   confirm: z.boolean(),
   password: z.string().min(8),
+});
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Current password is required'),
+  newPassword: z.string().min(8, 'New password must be at least 8 characters'),
 });
 
 const router = Router();
@@ -149,6 +155,22 @@ router.post(
     }
 
     const result = await deactivateAccount(authenticatedUser, data.password);
+    res.json(result);
+  }),
+);
+
+router.post(
+  '/change-password',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const data = changePasswordSchema.parse(req.body);
+    const authenticatedUser = req.user;
+
+    if (!authenticatedUser) {
+      throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+    }
+
+    const result = await changePassword(authenticatedUser, data.currentPassword, data.newPassword);
     res.json(result);
   }),
 );

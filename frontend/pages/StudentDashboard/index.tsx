@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Listing } from '../../types'
 import { listings } from '../../data'
 import { Badge } from '../../components/ui'
 import NotificationBell from '../../components/NotificationBell'
+import { addFavorite, addMaintenanceComment, cancelApplication as cancelStudentApplication, fetchPublicListings, getApplications, getFavorites, getLeases, getMaintenanceComments, getMaintenanceRequests, getProfile, getReceipts, getRentSummary, getStudentComplaints, getStudentReviews, payRent, removeFavorite, submitApplication as submitStudentApplication, submitMaintenanceRequest, submitStudentComplaint, submitStudentReview, updateProfile as updateStudentProfile, type StudentApplication } from '../../lib/studentApi'
 import { studentNotifs } from './constants'
 import StudentSidebarNav from './Sidebar'
 import OverviewPage from './pages/OverviewPage'
@@ -21,14 +22,97 @@ import type { StudentPage } from './types'
 
 export default function StudentDashboard({ userName, onSignOut }: { userName: string; onSignOut: () => void }) {
   type AppStatus = 'under-review' | 'accepted' | 'rejected' | 'cancelled'
-  type Application = { listingId: number; status: AppStatus; date: string }
-  type Review = { id: number; landlord: string; property: string; listingId: number; landlordStars: number; propStars: number; text: string; date: string }
+  type Application = StudentApplication & { status: AppStatus }
+  type Review = { id: number; landlord: string; property: string; listingId: string; landlordStars: number; propStars: number; text: string; date: string }
   type ChatMsg = { from: 'student' | 'landlord'; text: string }
 
   const [page, setPage] = useState<StudentPage>('overview')
   const [applyListing, setApplyListing] = useState<Listing | null>(null)
   const [viewListing, setViewListing] = useState<Listing | null>(null)
+  const [dashboardLoading, setDashboardLoading] = useState(false)
+  const [dashboardError, setDashboardError] = useState('')
+  const [studentProfile, setStudentProfile] = useState<{ name?: string; email?: string; studentId?: string } | null>(null)
   const openStudentListing = (l: Listing) => { setViewListing(l); setPage('listing-detail') }
+  const [allListings, setAllListings] = useState<Listing[]>([])
+
+  useEffect(() => {
+    let active = true
+
+    const loadStudentData = async () => {
+      setDashboardLoading(true)
+      setDashboardError('')
+
+      try {
+        const [profileResult, favoriteResult, applicationResult, rentResult, receiptResult, leaseResult, maintenanceResult, listingsResult, reviewsResult, complaintsResult] = await Promise.all([
+          getProfile().catch(() => null),
+          getFavorites().catch(() => []),
+          getApplications().catch(() => []),
+          getRentSummary().catch(() => []),
+          getReceipts().catch(() => []),
+          getLeases().catch(() => []),
+          getMaintenanceRequests().catch(() => []),
+          fetchPublicListings().catch(() => []),
+          getStudentReviews().catch(() => []),
+          getStudentComplaints().catch(() => []),
+        ])
+
+        if (!active) return
+
+        if (profileResult) {
+          setStudentProfile(profileResult)
+        }
+        setFavorites(Array.isArray(favoriteResult) ? favoriteResult : [])
+        setApplications(Array.isArray(applicationResult) ? applicationResult : [])
+        setRentSummary(Array.isArray(rentResult) ? rentResult : [])
+        setReceipts(Array.isArray(receiptResult) ? receiptResult : [])
+        const leasesList = Array.isArray(leaseResult) ? leaseResult : []
+        setLeases(leasesList)
+        setAllListings(Array.isArray(listingsResult) ? listingsResult : [])
+        setMyRequests(Array.isArray(maintenanceResult) ? maintenanceResult.map((request) => ({
+          id: Number(request.id ?? Date.now()),
+          issue: request.issue,
+          priority: request.priority,
+          description: request.description,
+          property: leasesList.find(l => l.propertyId === request.propertyId)?.propertyTitle || (leasesList[0]?.propertyTitle ?? 'Rental Unit'),
+          status: request.status,
+          stage: request.stage,
+          date: request.createdAt ? new Date(request.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A',
+        })) : [])
+        if (Array.isArray(reviewsResult)) {
+          setReviewHistory(reviewsResult.map((r: any) => ({
+            id: Number(r.id ?? Date.now()),
+            landlord: r.landlord || r.landlordName || 'Landlord',
+            property: r.property || r.propertyTitle || 'Property',
+            listingId: String(r.propertyId ?? r.listingId ?? ''),
+            landlordStars: Number(r.landlordStars ?? 0),
+            propStars: Number(r.propStars ?? r.propertyStars ?? 0),
+            text: r.text || r.comment || '',
+            date: r.date || (r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''),
+          })))
+        }
+        if (Array.isArray(complaintsResult) && complaintsResult.length > 0) {
+          setComplaints(complaintsResult.map((c: { id?: string; accusedName?: string; propertyTitle?: string; category?: string; description?: string; createdAt?: string; status?: string }) => ({
+            id: c.id ?? `CMP-${Date.now()}`,
+            against: c.accusedName ?? '',
+            property: c.propertyTitle ?? '',
+            category: c.category ?? 'Other',
+            subject: c.description?.split(' — ')[0] ?? '',
+            description: c.description?.split(' — ').slice(1).join(' — ') ?? c.description ?? '',
+            date: c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '',
+            status: (['Submitted', 'Under Review', 'Responded', 'Resolved', 'Closed'].includes(c.status ?? '') ? c.status : 'Submitted') as 'Submitted' | 'Under Review' | 'Responded' | 'Resolved' | 'Closed',
+          })))
+        }
+      } catch (error) {
+        if (!active) return
+        setDashboardError(error instanceof Error ? error.message : 'Unable to load student dashboard data.')
+      } finally {
+        if (active) setDashboardLoading(false)
+      }
+    }
+
+    loadStudentData()
+    return () => { active = false }
+  }, [])
 
   // Browse filters
   const [typeFilter, setTypeFilter] = useState<'all' | 'Single' | 'Mess' | 'Shared' | 'Sublet'>('all')
@@ -42,15 +126,51 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
 
   // Favorites
   const [favorites, setFavorites] = useState<number[]>([])
-  const toggleFavorite = (id: number) => setFavorites(f => f.includes(id) ? f.filter(x => x !== id) : [...f, id])
+  const toggleFavorite = async (id: number, propertyId?: string) => {
+    const isFavorite = favorites.includes(id)
+    const nextFavorites = isFavorite ? favorites.filter(f => f !== id) : [...favorites, id]
+    setFavorites(nextFavorites)
 
-  const filteredListings = listings.filter(l => {
-    if (typeFilter !== 'all' && l.type !== typeFilter) return false
-    if (distFilter !== 'all' && parseFloat(l.distance) > parseFloat(distFilter)) return false
-    if (l.price > maxPrice) return false
-    if (additionalFilters.includes('AC') && !l.facilities.includes('AC')) return false
-    if (additionalFilters.includes('WiFi') && !l.facilities.includes('WiFi')) return false
-    if (additionalFilters.includes('Parking') && !l.facilities.includes('Parking')) return false
+    try {
+      if (isFavorite) {
+        await removeFavorite(propertyId || String(id))
+      } else {
+        await addFavorite(propertyId || String(id))
+      }
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Could not update favorite.')
+      setFavorites(favorites)
+    }
+  }
+
+  // Browse listings – live from API
+  const [browseListings, setBrowseListings] = useState<Listing[]>([])
+  const [browseLoading, setBrowseLoading] = useState(false)
+
+  useEffect(() => {
+    if (page !== 'browse') return
+    let active = true
+    const load = async () => {
+      setBrowseLoading(true)
+      try {
+        const results = await fetchPublicListings({
+          type: typeFilter === 'all' ? undefined : typeFilter,
+          maxPrice,
+          maxDistance: distFilter === 'all' ? undefined : parseFloat(distFilter),
+          facilities: additionalFilters.length ? additionalFilters : undefined,
+        })
+        if (active) setBrowseListings(results)
+      } catch {
+        // keep previous listings on error
+      } finally {
+        if (active) setBrowseLoading(false)
+      }
+    }
+    load()
+    return () => { active = false }
+  }, [page, typeFilter, distFilter, maxPrice, additionalFilters])
+
+  const filteredListings = browseListings.filter(l => {
     if (bedroomFilter !== 'any') {
       const beds = l.rooms?.bedroom ?? 0
       if (bedroomFilter === '4+' && beds < 4) return false
@@ -66,81 +186,301 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
 
   // ── Applications ────────────────────────────────────────────────────────────
   const [applications, setApplications] = useState<Application[]>([])
-  const hasApplied = (id: number) => applications.some(a => a.listingId === id && a.status !== 'cancelled')
-  const cancelApplication = (listingId: number) =>
-    setApplications(prev => prev.map(a => a.listingId === listingId ? { ...a, status: 'cancelled' } : a))
 
-  const [appForm, setAppForm] = useState({ studentId: '', phone: '', moveIn: '', message: '', employment: 'Student' })
-  const submitApplication = () => {
-    if (!applyListing) return
-    setApplications(prev => [...prev, { listingId: applyListing.id, status: 'under-review', date: '31 Jul 2026' }])
-    setPage('applications')
-    setApplyListing(null)
-    setAppForm({ studentId: '', phone: '', moveIn: '', message: '', employment: 'Student' })
+  useEffect(() => {
+    let active = true
+    const refreshApplications = async () => {
+      if (document.visibilityState !== 'visible') return
+      const refreshed = await getApplications().catch(() => null)
+      if (active && refreshed) setApplications(refreshed)
+    }
+
+    let refreshTimer: ReturnType<typeof setInterval> | undefined
+    if (page === 'browse') {
+      void refreshApplications()
+      refreshTimer = setInterval(() => { void refreshApplications() }, 10000)
+    }
+    window.addEventListener('focus', refreshApplications)
+    document.addEventListener('visibilitychange', refreshApplications)
+    return () => {
+      active = false
+      if (refreshTimer) clearInterval(refreshTimer)
+      window.removeEventListener('focus', refreshApplications)
+      document.removeEventListener('visibilitychange', refreshApplications)
+    }
+  }, [page])
+
+  const hasApplied = (id: number) => applications.some(a => a.listingId === id && a.status === 'under-review')
+  const openApplicationListing = (app: Application) => {
+    const matched = allListings.find(l => l.id === app.listingId || String(l.id) === app.propertyId || l.propertyId === app.propertyId)
+      ?? listings.find(l => l.id === app.listingId)
+    if (matched) {
+      setViewListing(matched)
+      setPage('listing-detail')
+    } else {
+      const fallbackListing: Listing = {
+        id: app.listingId || 1,
+        title: app.propertyTitle || (app.propertyId ? `Property ${app.propertyId}` : 'UIU Rental Property'),
+        landlord: 'UIU Landlord',
+        type: 'Single',
+        distance: '0.5 km',
+        price: 5000,
+        status: 'available',
+        facilities: ['WiFi', 'Water'],
+        image: 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600&h=380&fit=crop&auto=format',
+        propertyId: app.propertyId || `UIU-${app.listingId}`,
+      }
+      setViewListing(fallbackListing)
+      setPage('listing-detail')
+    }
+  }
+  const onReApply = (app: Application) => {
+    // Find matching listing from allListings or construct a minimal listing object
+    const matchedListing = allListings.find(l => l.id === app.listingId || String(l.id) === app.propertyId || l.propertyId === app.propertyId)
+      ?? listings.find(l => l.id === app.listingId)
+    if (matchedListing) {
+      setApplyListing(matchedListing)
+      setPage('apply-form')
+    } else {
+      const fallbackListing: Listing = {
+        id: app.listingId || 1,
+        title: app.propertyTitle || (app.propertyId ? `Property ${app.propertyId}` : 'UIU Rental Property'),
+        landlord: 'UIU Landlord',
+        type: 'Single',
+        distance: '0.5 km',
+        price: 5000,
+        status: 'available',
+        facilities: ['WiFi', 'Water'],
+        image: 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600&h=380&fit=crop&auto=format',
+        propertyId: app.propertyId || `UIU-${app.listingId}`,
+      }
+      setApplyListing(fallbackListing)
+      setPage('apply-form')
+    }
+  }
+  const cancelApplication = async (app: Application) => {
+    const targetId = app.id || app.propertyId || String(app.listingId)
+    if (!targetId) return
+    // Optimistic update
+    setApplications(prev => prev.map(a => (a.id === app.id || a.propertyId === app.propertyId) ? { ...a, status: 'cancelled' } : a))
+    try {
+      await cancelStudentApplication(targetId)
+      const refreshed = await getApplications().catch(() => [] as Application[])
+      setApplications(refreshed)
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Could not cancel application.')
+      const refreshed = await getApplications().catch(() => [] as Application[])
+      setApplications(refreshed)
+    }
   }
 
+  const [appForm, setAppForm] = useState({ studentId: '', phone: '', moveIn: '', message: '', employment: 'Student' })
+  const handleSubmitApplication = async () => {
+    if (!applyListing) return
+
+    if (hasApplied(applyListing.id)) {
+      setDashboardError('You already submitted an application for this listing.')
+      return
+    }
+
+    try {
+      await submitStudentApplication({
+        propertyId: String(applyListing.propertyId || applyListing.id),
+        studentCardNo: appForm.studentId || undefined,
+        contactPhone: appForm.phone || undefined,
+        moveInDate: appForm.moveIn || new Date().toISOString().slice(0, 10),
+        employment: appForm.employment || 'Student',
+        message: appForm.message || undefined,
+      })
+
+      const refreshedApplications = await getApplications().catch(() => [])
+      setApplications(refreshedApplications)
+      setPage('applications')
+      setApplyListing(null)
+      setAppForm({ studentId: '', phone: '', moveIn: '', message: '', employment: 'Student' })
+      setDashboardError('')
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Application submission failed.')
+    }
+  }
+
+  // ── Lease and rent data ─────────────────────────────────────────────────────
+  const [rentSummary, setRentSummary] = useState<Array<{ id: string; leaseId: string; month: string; amount: number; dueDate: string; status: string; paid: boolean }>>([])
+  const [receipts, setReceipts] = useState<Array<{ month: string; amount: number; paid: boolean }>>([])
+  const [leases, setLeases] = useState<Array<{ id?: string; propertyId: string; propertyTitle?: string; propertyCode?: string; landlordId?: string; landlordName?: string; status: string; startDate?: string; endDate?: string; monthlyRent?: number }>>([])
+
   // ── Maintenance ─────────────────────────────────────────────────────────────
-  const [myRequests, setMyRequests] = useState([
-    { id: 1, issue: 'AC not cooling properly', status: 'in-progress', date: '25 Jul 2026' },
-    { id: 2, issue: 'Water tap leaking', status: 'resolved', date: '10 Jul 2026' },
-  ])
+  const [myRequests, setMyRequests] = useState<Array<{ id: number; issue: string; status: string; date: string }>>([])
   const [showNewReq, setShowNewReq] = useState(false)
   const [newReq, setNewReq] = useState({ issue: '', description: '', priority: 'Medium' })
-  const submitRequest = () => {
+  const submitRequest = async () => {
     if (!newReq.issue.trim()) return
-    setMyRequests(r => [...r, { id: Date.now(), issue: newReq.issue, status: 'open', date: '31 Jul 2026' }])
-    setNewReq({ issue: '', description: '', priority: 'Medium' })
-    setShowNewReq(false)
+    if (!leases.length) {
+      setDashboardError('You need an active lease before creating a maintenance request.')
+      return
+    }
+
+    const primaryLease = leases.find((l) => l.status === 'active') ?? leases[0]
+    try {
+      await submitMaintenanceRequest({
+        propertyId: primaryLease.propertyId,
+        landlordId: primaryLease.landlordId || '',
+        issue: newReq.issue,
+        description: newReq.description,
+        priority: (newReq.priority as 'Low' | 'Medium' | 'High') || 'Medium',
+        category: 'General',
+      })
+
+      const refreshed = await getMaintenanceRequests().catch(() => [])
+      setMyRequests(Array.isArray(refreshed) ? refreshed.map((request) => ({
+        id: Number(request.id ?? Date.now()),
+        issue: request.issue,
+        priority: request.priority,
+        description: request.description,
+        property: primaryLease.propertyTitle || 'Rental Unit',
+        status: request.status,
+        date: request.createdAt ? new Date(request.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Today',
+      })) : [])
+      setNewReq({ issue: '', description: '', priority: 'Medium' })
+      setShowNewReq(false)
+      setDashboardError('')
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Maintenance request submission failed.')
+    }
+  }
+
+  const handleUpdateStudentProfile = async (data: { name?: string; phone?: string; studentId?: string }): Promise<boolean> => {
+    try {
+      const updated = await updateStudentProfile(data)
+      const res = updated && 'data' in updated ? (updated as any).data : updated
+      setStudentProfile(prev => ({ ...prev, ...res }))
+      setDashboardError('')
+      return true
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Unable to update profile.')
+      return false
+    }
   }
 
   // ── Pay rent ─────────────────────────────────────────────────────────────────
   const [payStep, setPayStep] = useState<'form' | 'success'>('form')
   const [payForm, setPayForm] = useState({ card: '', expiry: '', cvv: '', name: '' })
-  const submitPayment = () => setPayStep('success')
+  const submitPayment = async () => {
+    setPayStep('success')
+    const activeLease = leases.find(l => l.status === 'active') ?? leases[0]
+    const pendingRent = rentSummary.find(r => !r.paid && r.status !== 'paid') ?? rentSummary[0]
+    const rentAmount = pendingRent?.amount ?? activeLease?.monthlyRent ?? 4200
+    const currentMonth = pendingRent?.month ?? new Date().toLocaleString('default', { month: 'short', year: 'numeric' })
+
+    setReceipts(prev => {
+      if (prev.some(r => r.month === currentMonth)) return prev
+      return [{ month: currentMonth, amount: rentAmount, paid: true }, ...prev]
+    })
+    setRentSummary(prev => prev.map(r => (!pendingRent || r.id === pendingRent.id) ? { ...r, paid: true, status: 'paid' } : r))
+
+    if (pendingRent?.id) {
+      try {
+        await payRent(pendingRent.id, { method: payMethod })
+        const [refreshedRent, refreshedReceipts] = await Promise.all([
+          getRentSummary().catch(() => null),
+          getReceipts().catch(() => null),
+        ])
+        if (refreshedRent) setRentSummary(refreshedRent)
+        if (refreshedReceipts) setReceipts(refreshedReceipts)
+      } catch (err) {
+        console.error('Failed to submit rent payment to backend:', err)
+      }
+    }
+  }
 
   // ── Reviews ──────────────────────────────────────────────────────────────────
-  // Landlords the student can review: current + any previously applied
-  const reviewableLandlords = [
-    { landlord: 'Rahman Faruk', property: 'Studio near Gate 3', listingId: 1 },
-    { landlord: 'Nusrat Jahan', property: 'Shared Mess – South Campus', listingId: 2 },
-  ]
-  const [reviewTarget, setReviewTarget] = useState(reviewableLandlords[0])
-  const [landlordStars, setLandlordStars] = useState(0)
-  const [propStars, setPropStars] = useState(0)
+  // Reviews are available for landlords tied to the student's active leases.
+  const reviewableLandlords = useMemo(() => {
+    const activeLeases = leases.filter((lease) => lease.status === 'active' && lease.landlordId && lease.propertyId)
+    const byProperty = new Map(activeLeases.map((lease) => [lease.propertyCode || lease.propertyId, {
+      landlord: lease.landlordName || 'Landlord',
+      property: lease.propertyTitle || lease.propertyCode || `Property ${lease.propertyId}`,
+      listingId: lease.propertyCode || lease.propertyId,
+    }]))
+    return [...byProperty.values()]
+  }, [leases])
+
+  const [reviewTarget, setReviewTarget] = useState(() => reviewableLandlords[0] ?? { landlord: '', property: '', listingId: '' })
+  useEffect(() => {
+    const currentTarget = reviewableLandlords.find((entry) => entry.listingId === reviewTarget.listingId)
+    const nextTarget = currentTarget ?? reviewableLandlords[0] ?? { landlord: '', property: '', listingId: '' }
+    if (nextTarget.landlord !== reviewTarget.landlord || nextTarget.property !== reviewTarget.property || nextTarget.listingId !== reviewTarget.listingId) {
+      setReviewTarget(nextTarget)
+    }
+  }, [reviewTarget, reviewableLandlords])
+
   const [reviewText, setReviewText] = useState('')
-  const [reviewHistory, setReviewHistory] = useState<Review[]>([
-    { id: 1, landlord: 'Nusrat Jahan', property: 'Shared Mess – South Campus', listingId: 2, landlordStars: 4, propStars: 3, text: 'Good facilities overall, but the common area could be cleaner. Landlord is responsive and polite.', date: '15 Jun 2026' },
-  ])
-  const submitReview = () => {
-    if (landlordStars === 0 || propStars === 0) return
-    setReviewHistory(h => [...h, {
-      id: Date.now(),
-      landlord: reviewTarget.landlord,
-      property: reviewTarget.property,
-      listingId: reviewTarget.listingId,
-      landlordStars,
-      propStars,
-      text: reviewText,
-      date: '31 Jul 2026',
-    }])
-    setLandlordStars(0)
-    setPropStars(0)
-    setReviewText('')
-    setPage('review-history')
+  const [reviewHistory, setReviewHistory] = useState<Review[]>([])
+  const [reviewSubmitting, setReviewSubmitting] = useState(false)
+  const [reviewError, setReviewError] = useState('')
+  const submitReview = async () => {
+    const calculatedLandlordStars = Math.round((questionAnswers[0] + questionAnswers[1]) / 2)
+    const calculatedPropStars = Math.round((questionAnswers[2] + questionAnswers[3]) / 2)
+    const comment = reviewText.trim()
+    if (!reviewTarget.listingId || !comment || reviewSubmitting) return
+
+    setReviewSubmitting(true)
+    setReviewError('')
+    try {
+      const saved = await submitStudentReview({
+        propertyId: String(reviewTarget.listingId),
+        landlordStars: calculatedLandlordStars,
+        propertyStars: calculatedPropStars,
+        comment,
+      })
+      const savedReview = saved as any
+      setReviewHistory(history => [{
+        id: Number(savedReview.id ?? Date.now()),
+        landlord: savedReview.landlord || reviewTarget.landlord,
+        property: savedReview.property || reviewTarget.property,
+        listingId: String(savedReview.propertyId ?? reviewTarget.listingId),
+        landlordStars: Number(savedReview.landlordStars ?? calculatedLandlordStars),
+        propStars: Number(savedReview.propStars ?? savedReview.propertyStars ?? calculatedPropStars),
+        text: savedReview.text ?? savedReview.comment ?? comment,
+        date: savedReview.date || (savedReview.createdAt ? new Date(savedReview.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })),
+      }, ...history])
+      setQuestionAnswers([0, 0, 0, 0, 0])
+      setWouldRecommend('')
+      setReviewText('')
+      setReviewStep(7)
+    } catch (err) {
+      console.error('Failed to submit review to backend:', err)
+      setReviewError(err instanceof Error ? err.message : 'Unable to save your review. Please try again.')
+    } finally {
+      setReviewSubmitting(false)
+    }
   }
-  const alreadyReviewed = (listingId: number) => reviewHistory.some(r => r.listingId === listingId)
+  const alreadyReviewed = (listingId: string) => Boolean(listingId) && reviewHistory.some(r => r.listingId === listingId)
 
   // ── Chat ─────────────────────────────────────────────────────────────────────
   // All landlords from listings are available to chat with
-  const allLandlords = Array.from(new Map(listings.map(l => [l.landlord, l])).values())
-  const [activeChatLandlord, setActiveChatLandlord] = useState<string>(allLandlords[0].landlord)
-  const [chatThreads, setChatThreads] = useState<Record<string, ChatMsg[]>>({
+  const allLandlords = useMemo(
+    () => Array.from(new Map(listings.map((listing) => [listing.landlord, listing])).values()),
+    [],
+  )
+
+  const [activeChatLandlord, setActiveChatLandlord] = useState<string>(allLandlords[0]?.landlord ?? 'Rahman Faruk')
+  const [chatThreads, setChatThreads] = useState<Record<string, ChatMsg[]>>(() => ({
     'Rahman Faruk': [
       { from: 'landlord', text: 'Hello! How can I help you today?' },
       { from: 'student', text: 'I wanted to ask about the parking availability.' },
       { from: 'landlord', text: 'Yes, we have one parking spot included with your unit.' },
     ],
-  })
+    ...(allLandlords[0] && allLandlords[0].landlord !== 'Rahman Faruk'
+      ? { [allLandlords[0].landlord]: [{ from: 'landlord', text: `Hello! I can help with ${allLandlords[0].title}.` }] }
+      : {}),
+  }))
+
+  useEffect(() => {
+    if (!allLandlords.some((listing) => listing.landlord === activeChatLandlord) && allLandlords[0]) {
+      setActiveChatLandlord(allLandlords[0].landlord)
+    }
+  }, [activeChatLandlord, allLandlords])
   const [chatInput, setChatInput] = useState('')
 
   const openChatWith = (landlordName: string) => {
@@ -156,12 +496,6 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
     const msg: ChatMsg = { from: 'student', text: chatInput }
     setChatThreads(t => ({ ...t, [activeChatLandlord]: [...(t[activeChatLandlord] ?? []), msg] }))
     setChatInput('')
-    setTimeout(() => {
-      setChatThreads(t => ({
-        ...t,
-        [activeChatLandlord]: [...(t[activeChatLandlord] ?? []), { from: 'landlord', text: "Thanks for your message! I'll get back to you shortly." }],
-      }))
-    }, 900)
   }
 
   const activeMsgs = chatThreads[activeChatLandlord] ?? []
@@ -185,8 +519,35 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
   ])
   const [showComplaintForm, setShowComplaintForm] = useState(false)
   const [cForm, setCForm] = useState({ against: '', property: '', category: 'Maintenance Neglect', subject: '', description: '' })
-  const submitComplaint = () => {
-    if (!cForm.subject.trim() || !cForm.against.trim()) return
+  const complaintTargets = useMemo(() => {
+    const seen = new Set<string>()
+
+    return leases
+      .filter((lease) => lease.landlordName && (lease.propertyTitle || lease.propertyCode))
+      .filter((lease) => ['active', 'ended', 'terminated'].includes(String(lease.status ?? '').toLowerCase()))
+      .map((lease) => {
+        const landlordName = lease.landlordName?.trim() ?? ''
+        const propertyTitle = lease.propertyTitle?.trim() || lease.propertyCode?.trim() || 'Property'
+        const key = `${landlordName}::${propertyTitle}`
+
+        if (!landlordName || seen.has(key)) return null
+        seen.add(key)
+
+        return { landlordName, propertyTitle }
+      })
+      .filter((target): target is { landlordName: string; propertyTitle: string } => Boolean(target))
+  }, [leases])
+
+  const complaintPropertyOptions = useMemo(() => {
+    if (!cForm.against) return complaintTargets.map((target) => target.propertyTitle)
+    return complaintTargets
+      .filter((target) => target.landlordName === cForm.against)
+      .map((target) => target.propertyTitle)
+  }, [complaintTargets, cForm.against])
+
+  const submitComplaint = async () => {
+    if (!cForm.subject.trim() || !cForm.against.trim() || !cForm.property.trim()) return
+    const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
     setComplaints(prev => [...prev, {
       id: `CMP-${String(prev.length + 1).padStart(3, '0')}`,
       against: cForm.against,
@@ -194,35 +555,65 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
       category: cForm.category,
       subject: cForm.subject,
       description: cForm.description,
-      date: '31 Jul 2026',
+      date: today,
       status: 'Submitted',
     }])
     setCForm({ against: '', property: '', category: 'Maintenance Neglect', subject: '', description: '' })
     setShowComplaintForm(false)
+    try {
+      await submitStudentComplaint({
+        against: cForm.against,
+        property: cForm.property,
+        category: cForm.category,
+        subject: cForm.subject,
+        description: cForm.description,
+      })
+    } catch (err) {
+      console.error('Failed to submit complaint to backend:', err)
+    }
   }
-  // Maintenance chat (per request)
-  const [maintChatThreads, setMaintChatThreads] = useState<Record<number, {from:'student'|'landlord';text:string}[]>>({
-    1: [{ from: 'landlord', text: 'We have assigned a technician. They will visit on Friday.' }, { from: 'student', text: 'Thank you, I\'ll be available from 2pm.' }],
-    2: [{ from: 'landlord', text: 'Issue resolved. AC serviced and refilled.' }],
-  })
+  // Maintenance chat (per request) — backed by maintenance_comments API
+  const [maintChatThreads, setMaintChatThreads] = useState<Record<number, {from:'student'|'landlord';text:string}[]>>({})
   const [maintChatInput, setMaintChatInput] = useState<Record<number,string>>({})
-  const sendMaintChat = (reqId: number) => {
+  const sendMaintChat = async (reqId: number) => {
     const text = (maintChatInput[reqId] ?? '').trim()
     if (!text) return
+    // Optimistic update
     setMaintChatThreads(t => ({ ...t, [reqId]: [...(t[reqId]??[]), { from: 'student', text }] }))
     setMaintChatInput(c => ({ ...c, [reqId]: '' }))
-    setTimeout(() => {
-      setMaintChatThreads(t => ({ ...t, [reqId]: [...(t[reqId]??[]), { from: 'landlord', text: "Got it, I'll look into this right away." }] }))
-    }, 900)
+    try {
+      await addMaintenanceComment(reqId, text)
+    } catch (err) {
+      console.error('Failed to send maintenance comment:', err)
+    }
+  }
+  // Load comments when a request is expanded
+  const loadMaintComments = async (reqId: number) => {
+    try {
+      const comments = await getMaintenanceComments(reqId)
+      setMaintChatThreads(t => ({
+        ...t,
+        [reqId]: comments.map((c: any) => ({
+          from: (c.from === 'landlord' ? 'landlord' : 'student') as 'student' | 'landlord',
+          text: c.text ?? c.message ?? '',
+        })),
+      }))
+    } catch (err) {
+      console.error('Failed to load maintenance comments:', err)
+    }
   }
 
-  // ── Nav ──────────────────────────────────────────────────────────────────────
-  const receipts = [
-    { month: 'Jul 2026', amount: 4200, paid: false },
-    { month: 'Jun 2026', amount: 4200, paid: true },
-    { month: 'May 2026', amount: 4200, paid: true },
-    { month: 'Apr 2026', amount: 4200, paid: true },
-  ]
+  useEffect(() => {
+    if (!rentSummary.length) return
+    const nextReceipts = rentSummary
+      .map((item) => ({
+        month: item.month,
+        amount: item.amount,
+        paid: item.paid || item.status === 'paid',
+      }))
+      .filter((item) => item.amount > 0)
+    setReceipts(nextReceipts.length ? nextReceipts : [])
+  }, [rentSummary])
 
   const statusBadge = (status: AppStatus) => {
     if (status === 'under-review') return <Badge variant="warning">Under Review</Badge>
@@ -239,11 +630,21 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
         badgeCount={favorites.length}
         pendingApplications={applications.filter(a => a.status === 'under-review').length}
         chatCount={Object.keys(chatThreads).length}
-        userName={userName}
+        userName={studentProfile?.name || userName}
         onSignOut={() => setShowSignOutConfirm(true)}
       />
 
       <main className="flex-1 overflow-auto bg-[#f8fafc]">
+        {dashboardLoading && (
+          <div className="px-6 pt-6">
+            <div className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-700">Loading your student dashboard...</div>
+          </div>
+        )}
+        {dashboardError && (
+          <div className="px-6 pt-6">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">{dashboardError}</div>
+          </div>
+        )}
         {showSignOutConfirm && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
             <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full mx-4">
@@ -294,6 +695,8 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
               onNavigate={setPage}
               openChatWith={openChatWith}
               setShowNewReq={setShowNewReq}
+              leases={leases}
+              rentSummary={rentSummary}
             />
           )}
 
@@ -318,28 +721,47 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
             />
           )}
 
-          {page === 'listing-detail' && viewListing && (
-            <ListingDetailViewPage
-              listing={viewListing}
-              onBack={() => setPage('browse')}
-              isFavorited={favorites.includes(viewListing.id)}
-              onToggleFavorite={() => toggleFavorite(viewListing.id)}
-              actions={
-                <>
-                  <button
-                    onClick={() => { setApplyListing(viewListing); setPage('apply-form') }}
-                    disabled={hasApplied(viewListing.id) || viewListing.status === 'occupied'}
-                    className={`w-full text-sm font-semibold py-3 rounded-xl transition-colors ${hasApplied(viewListing.id) ? 'bg-emerald-50 text-emerald-700 cursor-default' : viewListing.status === 'occupied' ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#1a1a18] text-white hover:bg-[#333]'}`}
-                  >
-                    {hasApplied(viewListing.id) ? '✓ Already Applied' : viewListing.status === 'occupied' ? 'Unit Occupied' : 'Apply for this Property'}
-                  </button>
-                  <button onClick={() => openChatWith(viewListing.landlord)} className="w-full border border-gray-200 text-[#1a1a18] text-sm font-semibold py-3 rounded-xl hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
-                    💬 Chat with {viewListing.landlord.split(' ')[0]}
-                  </button>
-                  <button onClick={() => setPage('browse')} className="w-full border border-gray-200 text-gray-500 text-sm font-semibold py-3 rounded-xl hover:bg-gray-50 transition-colors">Back to Browse</button>
-                </>
-              }
-            />
+          {page === 'listing-detail' && (
+            viewListing ? (
+              <ListingDetailViewPage
+                listing={viewListing}
+                onBack={() => setPage('browse')}
+                isFavorited={favorites.includes(viewListing.id)}
+                onToggleFavorite={() => toggleFavorite(viewListing.id, String(viewListing.propertyId || viewListing.id))}
+                currentTenants={leases
+                  .filter((lease) => lease.status === 'active' && (
+                    lease.propertyId === String(viewListing.propertyId || viewListing.id) ||
+                    lease.propertyCode === String(viewListing.propertyId || viewListing.id) ||
+                    lease.propertyTitle === viewListing.title
+                  ))
+                  .map((lease) => ({
+                    name: lease.landlordName ? `Landlord: ${lease.landlordName}` : 'Current tenant',
+                    studentId: lease.id,
+                  }))}
+                actions={
+                  <>
+                    <button
+                      onClick={() => { setApplyListing(viewListing); setPage('apply-form') }}
+                      disabled={hasApplied(viewListing.id) || viewListing.status === 'occupied'}
+                      className={`w-full text-sm font-semibold py-3 rounded-xl transition-colors ${hasApplied(viewListing.id) ? 'bg-emerald-50 text-emerald-700 cursor-default' : viewListing.status === 'occupied' ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#1a1a18] text-white hover:bg-[#333]'}`}
+                    >
+                      {hasApplied(viewListing.id) ? '✓ Already Applied' : viewListing.status === 'occupied' ? 'Unit Occupied' : 'Apply for this Property'}
+                    </button>
+                    <button onClick={() => openChatWith(viewListing.landlord || 'Landlord')} className="w-full border border-gray-200 text-[#1a1a18] text-sm font-semibold py-3 rounded-xl hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
+                      💬 Chat with {(viewListing.landlord || 'Landlord').split(' ')[0]}
+                    </button>
+                    <button onClick={() => setPage('browse')} className="w-full border border-gray-200 text-gray-500 text-sm font-semibold py-3 rounded-xl hover:bg-gray-50 transition-colors">Back to Browse</button>
+                  </>
+                }
+              />
+            ) : (
+              <div className="bg-white rounded-2xl p-8 text-center border border-gray-200 shadow-sm my-6 max-w-lg mx-auto">
+                <div className="text-3xl mb-2">🏠</div>
+                <div className="text-base font-semibold text-[#111827]">Property Details</div>
+                <div className="text-sm text-gray-500 mt-1 mb-4">Please select a property from browse to view full details.</div>
+                <button onClick={() => setPage('browse')} className="bg-[#111827] text-white text-sm font-semibold px-4 py-2 rounded-xl">Browse Listings</button>
+              </div>
+            )
           )}
 
           {page === 'apply-form' && applyListing && (
@@ -348,7 +770,7 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
               applyListing={applyListing}
               appForm={appForm}
               setAppForm={setAppForm}
-              submitApplication={submitApplication}
+              submitApplication={handleSubmitApplication}
               onBack={setPage}
             />
           )}
@@ -356,9 +778,11 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
           {page === 'applications' && (
             <ApplicationsPage
               applications={applications}
-              listings={listings}
+              listings={allListings}
               statusBadge={statusBadge}
               cancelApplication={cancelApplication}
+              onReApply={onReApply}
+              onViewListing={openApplicationListing}
               setPage={setPage}
             />
           )}
@@ -373,10 +797,12 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
               submitPayment={submitPayment}
               setPage={setPage}
               setPayStep={setPayStep}
+              leases={leases}
+              rentSummary={rentSummary}
             />
           )}
 
-          {page === 'receipts' && <ReceiptsPage receipts={receipts} userName={userName} setPage={setPage} />}
+          {page === 'receipts' && <ReceiptsPage receipts={receipts} leases={leases} userName={userName} setPage={setPage} />}
 
           {page === 'maintenance' && (
             <MaintenancePage
@@ -387,7 +813,10 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
               setNewReq={setNewReq}
               submitRequest={submitRequest}
               expandedMaintId={expandedMaintId}
-              setExpandedMaintId={setExpandedMaintId}
+              setExpandedMaintId={(id) => {
+                setExpandedMaintId(id)
+                if (id !== null) loadMaintComments(id)
+              }}
               maintChatThreads={maintChatThreads}
               maintChatInput={maintChatInput}
               setMaintChatInput={setMaintChatInput}
@@ -405,6 +834,8 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
               setReviewTarget={setReviewTarget}
               reviewText={reviewText}
               setReviewText={setReviewText}
+              reviewSubmitting={reviewSubmitting}
+              reviewError={reviewError}
               questionAnswers={questionAnswers}
               setQuestionAnswers={setQuestionAnswers}
               wouldRecommend={wouldRecommend}
@@ -439,7 +870,7 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
           {page === 'favorites' && (
             <FavoritesPage
               favorites={favorites}
-              listings={listings}
+              listings={allListings}
               openStudentListing={openStudentListing}
               toggleFavorite={toggleFavorite}
               setPage={setPage}
@@ -449,9 +880,12 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
           {page === 'settings' && (
             <SettingsPage
               userName={userName}
+              profile={studentProfile}
+              onSaveProfile={handleUpdateStudentProfile}
               applications={applications}
               reviewHistory={reviewHistory}
               complaints={complaints}
+              complaintTargets={complaintTargets}
               showComplaintForm={showComplaintForm}
               setShowComplaintForm={setShowComplaintForm}
               cForm={cForm}

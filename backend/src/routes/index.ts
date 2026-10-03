@@ -9,6 +9,8 @@ import { adminReportsRouter } from './admin-reports.js';
 import { adminComplaintsRouter } from './admin-complaints.js';
 import { adminChatRouter } from './admin-chat.js';
 import { adminNotificationsRouter } from './admin-notifications.js';
+import { studentRouter } from './student.js';
+import { landlordRouter } from './landlord.js';
 
 /**
  * All v1 API routes are mounted here and registered under /api/v1 in
@@ -21,6 +23,10 @@ v1Router.use(healthRouter);
 v1Router.use('/auth', authRouter);
 v1Router.use('/security', securityRouter);
 v1Router.use('/listings', listingsRouter);
+v1Router.use('/student', studentRouter);
+v1Router.use('/students', studentRouter);
+v1Router.use('/landlord', landlordRouter);
+v1Router.use('/landlords', landlordRouter);
 v1Router.use('/admin', adminRouter);
 v1Router.use('/admin', adminListingsRouter);
 v1Router.use('/admin', adminReportsRouter);

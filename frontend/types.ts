@@ -20,4 +20,7 @@ export type Listing = {
   parking?: string
   images?: { room: string; url: string }[]
   description?: string
+  mapPin?: { x: number; y: number }
+  street?: string
+  area?: string
 }

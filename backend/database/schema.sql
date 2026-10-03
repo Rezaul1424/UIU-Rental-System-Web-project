@@ -20,6 +20,7 @@ DROP TABLE IF EXISTS `chat_messages`;
 DROP TABLE IF EXISTS `conversations`;
 DROP TABLE IF EXISTS `favorites`;
 DROP TABLE IF EXISTS `reviews`;
+DROP TABLE IF EXISTS `maintenance_comments`;
 DROP TABLE IF EXISTS `maintenance_requests`;
 DROP TABLE IF EXISTS `rent_payments`;
 DROP TABLE IF EXISTS `applications`;
@@ -198,6 +199,7 @@ CREATE TABLE `maintenance_requests` (
   `description` TEXT DEFAULT NULL,
   `priority` ENUM('Low', 'Medium', 'High') NOT NULL DEFAULT 'Medium',
   `status` ENUM('open', 'in-progress', 'resolved') NOT NULL DEFAULT 'open',
+  `progress_stage` TINYINT UNSIGNED NOT NULL DEFAULT 1,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT `fk_maint_property`
@@ -212,6 +214,22 @@ CREATE TABLE `maintenance_requests` (
   INDEX `idx_maint_status` (`status`),
   INDEX `idx_maint_priority` (`priority`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `maintenance_comments` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `maintenance_request_id` INT NOT NULL,
+  `author_id` INT NOT NULL,
+  `message` TEXT NOT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT `fk_maint_comments_request`
+    FOREIGN KEY (`maintenance_request_id`) REFERENCES `maintenance_requests` (`id`)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_maint_comments_author`
+    FOREIGN KEY (`author_id`) REFERENCES `users` (`id`)
+    ON DELETE RESTRICT ON UPDATE CASCADE,
+  INDEX `idx_maint_comments_req_created` (`maintenance_request_id`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 
 -- ------------------------------------------------------------------------------
 -- 8. REVIEWS & RATINGS TABLE
@@ -348,6 +366,30 @@ CREATE TABLE `notifications` (
   INDEX `idx_notif_user_read` (`user_id`, `is_read`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ------------------------------------------------------------------------------
+-- 13. AUTH SESSIONS & PASSWORD RESET TOKENS
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `auth_sessions` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `user_id` INT NOT NULL,
+  `token_hash` VARCHAR(64) NOT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `expires_at` TIMESTAMP NOT NULL,
+  `revoked_at` TIMESTAMP NULL DEFAULT NULL,
+  INDEX `idx_sessions_token_hash` (`token_hash`),
+  INDEX `idx_sessions_user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `password_reset_tokens` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT NOT NULL,
+  `token_hash` VARCHAR(64) NOT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `expires_at` TIMESTAMP NOT NULL,
+  `used_at` TIMESTAMP NULL DEFAULT NULL,
+  INDEX `idx_reset_token_hash` (`token_hash`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ==============================================================================
 -- INITIAL SEED DATA (Matching UIU vicinity landmarks & Frontend Prototype)
 -- ==============================================================================
@@ -374,7 +416,7 @@ INSERT INTO `users` (`id`, `role`, `name`, `email`, `password_hash`, `phone`, `s
   (4, 'landlord', 'Karim Abdullah', 'karim@example.com', '$2a$10$H/1XcWSZklIZXfO82Id6CeLkQkPo2k9OKFU4AGQmQKGdLZTVngeJa', '+8801711122235', NULL, NULL, 'active', TRUE),
   (5, 'student', 'Tanvir Ahmed', 'tanvir@uiu.ac.bd', '$2a$10$H/1XcWSZklIZXfO82Id6CeLkQkPo2k9OKFU4AGQmQKGdLZTVngeJa', '+8801811223344', '011211001', 'CSE', 'active', TRUE),
   (6, 'student', 'Sadia Islam', 'sadia@uiu.ac.bd', '$2a$10$H/1XcWSZklIZXfO82Id6CeLkQkPo2k9OKFU4AGQmQKGdLZTVngeJa', '+8801811223345', '011211002', 'BBA', 'active', TRUE)
-ON DUPLICATE KEY UPDATE `email`=VALUES(`email`);
+ON DUPLICATE KEY UPDATE `email`=VALUES(`email`), `password_hash`=VALUES(`password_hash`);
 
 -- 3. Seed Properties
 INSERT INTO `properties` (`id`, `property_code`, `landlord_id`, `title`, `description`, `type`, `price`, `distance_km`, `status`, `total_size_sqft`, `roommate_capacity`, `parking`, `bedroom_count`, `living_count`, `bathroom_count`, `kitchen_count`, `veranda_count`, `room_sizes_json`, `address_street`, `address_area`, `map_pin_x`, `map_pin_y`) VALUES

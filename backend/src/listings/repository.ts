@@ -2,6 +2,7 @@ import mysql from 'mysql2/promise';
 import type { RowDataPacket } from 'mysql2';
 import type { Listing, ListingTypeType } from '../contracts/api.js';
 import { databasePropertyTypeToApiType } from '../contracts/api.js';
+import { testListings as landlordTestListings } from '../landlord/repository.js';
 
 export type ListingSearch = {
   page: number;
@@ -109,7 +110,7 @@ function sortFixtures(items: Listing[], search: ListingSearch): Listing[] {
 
 function filterFixtures(search: ListingSearch): Listing[] {
   const query = search.q?.toLowerCase();
-  return testListings.filter((listing) => {
+  return getFixtureListings().filter((listing) => {
     if (query && !`${listing.title} ${listing.description} ${listing.address.area ?? ''}`.toLowerCase().includes(query)) return false;
     if (search.type && listing.type !== search.type) return false;
     if (search.maxPrice !== undefined && listing.priceBDT > search.maxPrice) return false;
@@ -119,6 +120,48 @@ function filterFixtures(search: ListingSearch): Listing[] {
     if (search.facilities.some((facility) => !listing.facilities.some((value) => value.toLowerCase() === facility.toLowerCase()))) return false;
     return true;
   });
+}
+
+function getFixtureListings(): Listing[] {
+  const dynamicListings: Array<Listing & { propertyCode?: string }> = [];
+  for (const listings of landlordTestListings.values()) {
+    for (const listing of listings) {
+      if (listing.status !== 'approved') continue;
+
+      dynamicListings.push({
+        id: listing.id,
+        propertyCode: listing.propertyCode,
+        title: listing.title,
+        landlordName: 'Landlord',
+        type: listing.type,
+        description: listing.description,
+        priceBDT: listing.priceBDT,
+        currency: 'BDT',
+        status: listing.status === 'approved' ? 'approved' : 'draft',
+        bedrooms: listing.bedrooms,
+        rooms: listing.bedrooms ?? 1,
+        roomSizesSqFt: [listing.bedrooms ?? 1],
+        totalSizeSqFt: undefined,
+        roommateCapacity: listing.roommateCapacity,
+        parkingAvailable: listing.parkingAvailable,
+        facilities: listing.facilities,
+        images: [],
+        address: {
+          line1: listing.address.line1,
+          area: listing.address.area,
+          city: listing.address.city,
+          district: listing.address.district,
+          latitude: listing.address.latitude,
+          longitude: listing.address.longitude,
+        },
+        distanceKm: 0.3,
+        createdAt: listing.createdAt,
+        updatedAt: listing.updatedAt,
+      });
+    }
+  }
+
+  return [...testListings.filter((listing) => listing.status === 'approved'), ...dynamicListings];
 }
 
 function mapListing(row: PropertyRow, images: ImageRow[], amenities: AmenityRow[]): Listing {
@@ -189,14 +232,17 @@ export async function searchPublicListings(search: ListingSearch) {
   const where = buildWhere(search);
   const [countRows] = await db.query<RowDataPacket[]>(`SELECT COUNT(*) AS total FROM properties p WHERE ${where.sql}`, where.params);
   const total = Number(countRows[0]?.total ?? 0);
-  const [rows] = await db.query<PropertyRow[]>(`SELECT p.*, u.name AS landlord_name, a.latitude, a.longitude FROM properties p JOIN users u ON u.id = p.landlord_id LEFT JOIN addresses a ON a.property_id = p.id WHERE ${where.sql} ORDER BY ${sortColumns[search.sortBy]} ${search.sortDirection.toUpperCase()}, p.id ASC LIMIT ? OFFSET ?`, [...where.params, search.limit, (search.page - 1) * search.limit]);
+  const [rows] = await db.query<PropertyRow[]>(`SELECT p.*, u.name AS landlord_name, p.map_pin_x AS latitude, p.map_pin_y AS longitude FROM properties p JOIN users u ON u.id = p.landlord_id WHERE ${where.sql} ORDER BY ${sortColumns[search.sortBy]} ${search.sortDirection.toUpperCase()}, p.id ASC LIMIT ? OFFSET ?`, [...where.params, search.limit, (search.page - 1) * search.limit]);
   const [images] = await db.query<ImageRow[]>('SELECT property_id, id, image_url, is_primary FROM property_images WHERE property_id IN (?)', [rows.map((row) => row.id)]);
   const [amenities] = await db.query<AmenityRow[]>('SELECT pa.property_id, a.name FROM property_amenities pa JOIN amenities a ON a.id = pa.amenity_id WHERE pa.property_id IN (?)', [rows.map((row) => row.id)]);
   return { data: rows.map((row) => mapListing(row, images, amenities)), meta: pageMeta(search.page, search.limit, total) };
 }
 
 export async function getPublicListing(identifier: string): Promise<Listing | undefined> {
-  if (useFixtures()) return testListings.find((listing) => listing.id === identifier);
+  if (useFixtures()) {
+    const candidates = getFixtureListings();
+    return candidates.find((listing) => listing.id === identifier || (listing as Listing & { propertyCode?: string }).propertyCode === identifier);
+  }
   const [rows] = await db.query<PropertyRow[]>('SELECT p.*, u.name AS landlord_name, a.latitude, a.longitude FROM properties p JOIN users u ON u.id = p.landlord_id LEFT JOIN addresses a ON a.property_id = p.id WHERE p.status = \'available\' AND p.moderation_status = \'approved\' AND (p.property_code = ? OR CAST(p.id AS CHAR) = ?) LIMIT 1', [identifier, identifier]);
   const row = rows[0];
   if (!row) return undefined;
@@ -204,3 +250,27 @@ export async function getPublicListing(identifier: string): Promise<Listing | un
   const [amenities] = await db.query<AmenityRow[]>('SELECT pa.property_id, a.name FROM property_amenities pa JOIN amenities a ON a.id = pa.amenity_id WHERE pa.property_id = ?', [row.id]);
   return mapListing(row, images, amenities);
 }
+
+export async function getListingReviews(identifier: string): Promise<any[]> {
+  if (useFixtures()) return [];
+  const [rows] = await db.query<RowDataPacket[]>(
+    `SELECT r.id, r.property_id, r.student_id, r.landlord_id, r.landlord_stars, r.property_stars, r.comment, r.created_at,
+            u.name AS student_name
+     FROM reviews r
+     JOIN properties p ON p.id = r.property_id
+     JOIN users u ON u.id = r.student_id
+     WHERE p.property_code = ? OR CAST(p.id AS CHAR) = ?
+     ORDER BY r.created_at DESC`,
+    [identifier, identifier],
+  );
+
+  return rows.map((row) => ({
+    id: Number(row.id),
+    studentName: row.student_name,
+    landlordStars: Number(row.landlord_stars),
+    propertyStars: Number(row.property_stars),
+    comment: row.comment || '',
+    createdAt: row.created_at.toISOString(),
+  }));
+}
+

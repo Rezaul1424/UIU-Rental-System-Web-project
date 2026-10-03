@@ -19,16 +19,22 @@ export default function ListingsPage({ myListings, openLandlordListing, openEdit
         </div>
         <button onClick={() => setPage('add-listing')} className="bg-[#111827] text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-[#1f2937] transition-colors shadow-sm">+ Add Listing</button>
       </div>
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {myListings.map(listing => (
-          <ListingCard
-            key={listing.id}
-            listing={listing}
-            onView={() => openLandlordListing(listing)}
-            actions={<button onClick={() => openEdit(listing.id)} className="text-xs text-[#1a1a18] font-semibold hover:underline">Edit</button>}
-          />
-        ))}
-      </div>
+      {myListings.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-10 text-center text-sm text-gray-500">
+          You have no listings yet. Add your first property to start receiving student applications.
+        </div>
+      ) : (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {myListings.map(listing => (
+            <ListingCard
+              key={listing.id}
+              listing={listing}
+              onView={() => openLandlordListing(listing)}
+              actions={<button onClick={() => openEdit(listing.id)} className="text-xs text-[#1a1a18] font-semibold hover:underline">Edit</button>}
+            />
+          ))}
+        </div>
+      )}
     </>
   )
 }

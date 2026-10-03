@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../src/app.js';
 import { createAuthToken, registerUser } from '../src/auth/auth.js';
+import * as auth from '../src/auth/auth.js';
 
 const app = buildApp();
 
@@ -95,6 +96,31 @@ describe('Module 3 authentication lifecycle', () => {
 
     expect(login.status).toBe(403);
     expect(login.body.error.code).toBe('ACCOUNT_PENDING');
+  });
+
+  it('falls back to in-memory auth when MySQL is unavailable in development', async () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'development';
+
+    try {
+      const result = await auth.registerUser({
+        name: 'Local Dev User',
+        email: 'localdev@uiu.ac.bd',
+        password: 'StrongPass123!',
+        studentId: 'DEV-001',
+        role: 'student',
+      });
+
+      expect(result.user.email).toBe('localdev@uiu.ac.bd');
+      expect(Number.isFinite(Number(result.user.id))).toBe(true);
+
+      const loggedIn = await auth.verifyCredentials('localdev@uiu.ac.bd', 'StrongPass123!');
+      expect(loggedIn.email).toBe('localdev@uiu.ac.bd');
+      expect(loggedIn.role).toBe('student');
+      expect(Number.isFinite(Number(loggedIn.id))).toBe(true);
+    } finally {
+      process.env.NODE_ENV = originalNodeEnv;
+    }
   });
 
   it('rejects invalid login credentials safely', async () => {

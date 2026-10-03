@@ -1,10 +1,16 @@
+import { useRef, useState } from 'react'
 import type { Application, Complaint, Review } from '../types'
+import type { StudentProfile } from '../../../lib/studentApi'
+import { changePassword } from '../../../lib/api'
 
 type SettingsPageProps = {
   userName: string
+  profile?: StudentProfile | null
+  onSaveProfile?: (data: { name?: string; phone?: string; studentId?: string }) => Promise<boolean>
   applications: Application[]
   reviewHistory: Review[]
   complaints: Complaint[]
+  complaintTargets: Array<{ landlordName: string; propertyTitle: string }>
   showComplaintForm: boolean
   setShowComplaintForm: (value: boolean) => void
   cForm: { against: string; property: string; category: string; subject: string; description: string }
@@ -13,7 +19,70 @@ type SettingsPageProps = {
   setShowDeactivateConfirm: (value: boolean) => void
 }
 
-export default function SettingsPage({ userName, applications, reviewHistory, complaints, showComplaintForm, setShowComplaintForm, cForm, setCForm, submitComplaint, setShowDeactivateConfirm }: SettingsPageProps) {
+export default function SettingsPage({ userName, profile, onSaveProfile, applications, reviewHistory, complaints, complaintTargets, showComplaintForm, setShowComplaintForm, cForm, setCForm, submitComplaint, setShowDeactivateConfirm }: SettingsPageProps) {
+  const nameRef = useRef<HTMLInputElement>(null)
+  const phoneRef = useRef<HTMLInputElement>(null)
+  const studentIdRef = useRef<HTMLInputElement>(null)
+  const [saving, setSaving] = useState(false)
+  const [saveSuccess, setSaveSuccess] = useState(false)
+
+  const [currentPw, setCurrentPw] = useState('')
+  const [newPw, setNewPw] = useState('')
+  const [confirmPw, setConfirmPw] = useState('')
+  const [pwLoading, setPwLoading] = useState(false)
+  const [pwError, setPwError] = useState('')
+  const [pwSuccess, setPwSuccess] = useState('')
+  const complaintPropertyOptions = cForm.against
+    ? complaintTargets
+        .filter((target) => target.landlordName === cForm.against)
+        .map((target) => target.propertyTitle)
+    : complaintTargets.map((target) => target.propertyTitle)
+
+  const handlePasswordChange = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    setPwError('')
+    setPwSuccess('')
+
+    if (!currentPw) {
+      setPwError('Please enter your current password.')
+      return
+    }
+    if (!newPw || newPw.length < 8) {
+      setPwError('New password must be at least 8 characters long.')
+      return
+    }
+    if (newPw !== confirmPw) {
+      setPwError('New passwords do not match.')
+      return
+    }
+
+    setPwLoading(true)
+    try {
+      await changePassword(currentPw, newPw)
+      setPwSuccess('Password updated successfully!')
+      setCurrentPw('')
+      setNewPw('')
+      setConfirmPw('')
+    } catch (err) {
+      setPwError(err instanceof Error ? err.message : 'Failed to update password.')
+    } finally {
+      setPwLoading(false)
+    }
+  }
+
+  const handleSave = async () => {
+    if (!onSaveProfile) return
+    setSaving(true)
+    setSaveSuccess(false)
+    const ok = await onSaveProfile({
+      name: nameRef.current?.value || undefined,
+      phone: phoneRef.current?.value || undefined,
+      studentId: studentIdRef.current?.value || undefined,
+    })
+    setSaving(false)
+    if (ok) setSaveSuccess(true)
+  }
+
   return (
     <>
       <div>
@@ -33,19 +102,27 @@ export default function SettingsPage({ userName, applications, reviewHistory, co
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              {[
-                { label: 'Full Name', value: userName, placeholder: 'Your full name' },
-                { label: 'Email Address', value: 'student@uiu.ac.bd', placeholder: 'your@email.com' },
-                { label: 'Student ID', value: '2024-CSE-104', placeholder: 'Student ID' },
-                { label: 'Phone Number', value: '+880 1712-345678', placeholder: '+880...' },
-              ].map(f => (
-                <div key={f.label}>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">{f.label}</label>
-                  <input defaultValue={f.value} placeholder={f.placeholder} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#111827]" />
-                </div>
-              ))}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Full Name</label>
+                <input ref={nameRef} defaultValue={profile?.name ?? userName} placeholder="Your full name" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#111827]" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Email Address</label>
+                <input defaultValue={profile?.email ?? 'student@uiu.ac.bd'} placeholder="your@email.com" disabled className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 text-gray-400 cursor-not-allowed" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Student ID</label>
+                <input ref={studentIdRef} defaultValue={profile?.studentId ?? ''} placeholder="Student ID" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#111827]" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Phone Number</label>
+                <input ref={phoneRef} defaultValue={profile?.phone ?? ''} placeholder="+880..." className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#111827]" />
+              </div>
             </div>
-            <button className="bg-[#111827] text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-[#1f2937] transition-colors">Save Changes</button>
+            <div className="flex items-center gap-3">
+              <button onClick={handleSave} disabled={saving} className="bg-[#111827] text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-[#1f2937] transition-colors disabled:opacity-60">{saving ? 'Saving…' : 'Save Changes'}</button>
+              {saveSuccess && <span className="text-sm text-emerald-600 font-medium">Profile updated ✓</span>}
+            </div>
           </div>
           <div className="bg-white rounded-2xl shadow-sm p-6 space-y-4">
             <div className="font-semibold text-[#111827]">Notification Preferences</div>
@@ -72,15 +149,60 @@ export default function SettingsPage({ userName, applications, reviewHistory, co
           </div>
           <div className="bg-white rounded-2xl shadow-sm p-6 space-y-4">
             <div className="font-semibold text-[#111827]">Change Password</div>
-            <div className="space-y-3">
-              {['Current Password', 'New Password', 'Confirm New Password'].map(l => (
-                <div key={l}>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">{l}</label>
-                  <input type="password" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#111827]" placeholder="••••••••" />
-                </div>
-              ))}
-            </div>
-            <button className="border border-gray-200 text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-gray-50 transition-colors text-[#111827]">Update Password</button>
+
+            {pwError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-3.5 py-2.5 rounded-xl">
+                {pwError}
+              </div>
+            )}
+            {pwSuccess && (
+              <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs px-3.5 py-2.5 rounded-xl">
+                {pwSuccess}
+              </div>
+            )}
+
+            <form onSubmit={handlePasswordChange} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Current Password</label>
+                <input
+                  type="password"
+                  value={currentPw}
+                  onChange={e => setCurrentPw(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#111827]"
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">New Password</label>
+                <input
+                  type="password"
+                  value={newPw}
+                  onChange={e => setNewPw(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#111827]"
+                  placeholder="Minimum 8 characters"
+                  autoComplete="new-password"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Confirm New Password</label>
+                <input
+                  type="password"
+                  value={confirmPw}
+                  onChange={e => setConfirmPw(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#111827]"
+                  placeholder="Re-enter new password"
+                  autoComplete="new-password"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={pwLoading}
+                className="border border-gray-200 text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-gray-50 transition-colors text-[#111827] disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {pwLoading ? 'Updating…' : 'Update Password'}
+              </button>
+            </form>
           </div>
         </div>
         <div className="space-y-5">
@@ -144,11 +266,34 @@ export default function SettingsPage({ userName, applications, reviewHistory, co
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1">Landlord</label>
-                    <input value={cForm.against} onChange={e => setCForm(f => ({ ...f, against: e.target.value }))} placeholder="Landlord name" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#1a1a18]" />
+                    <select
+                      value={cForm.against}
+                      onChange={e => setCForm(f => ({
+                        ...f,
+                        against: e.target.value,
+                        property: complaintTargets.find((target) => target.landlordName === e.target.value)?.propertyTitle ?? '',
+                      }))}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#1a1a18] bg-white"
+                    >
+                      <option value="">Select landlord</option>
+                      {complaintTargets.map((target) => (
+                        <option key={`${target.landlordName}-${target.propertyTitle}`} value={target.landlordName}>{target.landlordName}</option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1">Related Property</label>
-                    <input value={cForm.property} onChange={e => setCForm(f => ({ ...f, property: e.target.value }))} placeholder="Property name" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#1a1a18]" />
+                    <select
+                      value={cForm.property}
+                      onChange={e => setCForm(f => ({ ...f, property: e.target.value }))}
+                      disabled={!cForm.against || complaintPropertyOptions.length === 0}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#1a1a18] bg-white disabled:bg-gray-100 disabled:text-gray-400"
+                    >
+                      <option value="">{cForm.against ? 'Select property' : 'Choose landlord first'}</option>
+                      {complaintPropertyOptions.map((propertyTitle) => (
+                        <option key={propertyTitle} value={propertyTitle}>{propertyTitle}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">

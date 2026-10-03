@@ -14,7 +14,7 @@ type BrowsePageProps = {
   toggleAdditionalFilter: (f: string) => void
   openStudentListing: (listing: Listing) => void
   openChatWith: (landlordName: string) => void
-  toggleFavorite: (id: number) => void
+  toggleFavorite: (id: number, propertyId?: string) => void
   hasApplied: (id: number) => boolean
   setApplyListing: (listing: Listing | null) => void
   setPage: (page: StudentPage) => void
@@ -106,7 +106,7 @@ export default function BrowsePage({
                   <span className="font-bold text-[#111827]">৳{l.price.toLocaleString()}<span className="text-xs font-normal text-gray-400">/mo</span></span>
                   <div className="flex items-center gap-1.5">
                     <button title="Chat with landlord" onClick={e => { e.stopPropagation(); openChatWith(l.landlord) }} className="w-8 h-8 flex items-center justify-center border border-gray-200 rounded-lg text-gray-500 hover:border-[#111827] hover:text-[#111827] transition-colors">💬</button>
-                    <button title={favorites.includes(l.id) ? 'Remove from saved' : 'Save property'} onClick={e => { e.stopPropagation(); toggleFavorite(l.id) }} className={`w-8 h-8 flex items-center justify-center rounded-lg border transition-all ${favorites.includes(l.id) ? 'bg-red-50 border-red-300 text-red-500' : 'border-gray-200 text-gray-400 hover:border-red-300 hover:text-red-400'}`}>
+                    <button title={favorites.includes(l.id) ? 'Remove from saved' : 'Save property'} onClick={e => { e.stopPropagation(); toggleFavorite(l.id, String(l.propertyId || l.id)) }} className={`w-8 h-8 flex items-center justify-center rounded-lg border transition-all ${favorites.includes(l.id) ? 'bg-red-50 border-red-300 text-red-500' : 'border-gray-200 text-gray-400 hover:border-red-300 hover:text-red-400'}`}>
                       <svg width="13" height="13" viewBox="0 0 24 24" fill={favorites.includes(l.id) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" /></svg>
                     </button>
                     <button disabled={hasApplied(l.id) || l.status === 'occupied'} onClick={e => { e.stopPropagation(); if (!hasApplied(l.id) && l.status !== 'occupied') { setApplyListing(l); setPage('apply-form') } }} className={`text-xs px-2.5 py-1.5 rounded-lg font-semibold transition-colors ${hasApplied(l.id) ? 'bg-emerald-50 text-emerald-700' : l.status === 'occupied' ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#111827] text-white hover:bg-[#1f2937]'}`}>

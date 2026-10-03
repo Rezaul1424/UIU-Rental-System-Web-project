@@ -1,8 +1,8 @@
-import React from 'react'
-import { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import type { Listing } from '../types'
 import { Badge } from './ui'
 import { CampusMap } from './Map'
+import { api } from '../lib/api'
 
 export const listingDescriptions: Record<number, string> = {
   1: 'A cosy, self-contained studio unit just a 4-minute walk from UIU Gate 3. The flat features a private bathroom, a kitchenette with gas cooker, and reliable AC. Natural light from east-facing windows makes the space feel open. Ideal for a single student who values privacy and proximity to campus.',
@@ -18,7 +18,7 @@ export const listingPins: Record<number, { x: number; y: number }> = {
   4: { x: 57, y: 52 }, 5: { x: 46, y: 38 }, 6: { x: 70, y: 56 },
 }
 
-export default function ListingDetailPage({ listing, onBack, backLabel = '← Back', actions, isFavorited, onToggleFavorite, onPropertyIdClick }: {
+export default function ListingDetailPage({ listing, onBack, backLabel = '← Back', actions, isFavorited, onToggleFavorite, onPropertyIdClick, currentTenants = [] }: {
   listing: Listing
   onBack: () => void
   backLabel?: string
@@ -26,20 +26,61 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
   isFavorited?: boolean
   onToggleFavorite?: () => void
   onPropertyIdClick?: () => void
+  currentTenants?: Array<{ name: string; studentId?: string }>
 }) {
   const [carouselIdx, setCarouselIdx] = useState(0)
   const [showReviewsModal, setShowReviewsModal] = useState(false)
-  const pin = listingPins[listing.id] ?? { x: 50, y: 50 }
+  const [fetchedReviews, setFetchedReviews] = useState<Array<{ name: string; stars: number; comment: string; date: string; property: string }>>([])
+  const [reviewsLoading, setReviewsLoading] = useState(false)
+  const [reviewsLoadError, setReviewsLoadError] = useState(false)
+
+  const rawPin = listing.mapPin ?? listingPins[listing.id] ?? { x: 50, y: 50 }
+  const pin = {
+    x: Number.isFinite(Number(rawPin?.x)) ? Number(rawPin.x) : 50,
+    y: Number.isFinite(Number(rawPin?.y)) ? Number(rawPin.y) : 50,
+  }
   const desc = listing.description || listingDescriptions[listing.id] || 'A verified rental property near UIU campus.'
-  const images = listing.images ?? [{ room: 'Property', url: listing.image }]
+  const fallbackImg = listing.image || 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=600&h=380&fit=crop&auto=format'
+  const rawImages = listing.images?.filter(img => img?.url) ?? []
+  const images = rawImages.length > 0 ? rawImages : [{ room: 'Property', url: fallbackImg }]
   const prevImg = () => setCarouselIdx(i => (i - 1 + images.length) % images.length)
   const nextImg = () => setCarouselIdx(i => (i + 1) % images.length)
 
-  const sampleReviews = [
-    { name: 'Tanvir Ahmed', stars: 4, comment: 'Great landlord, very responsive. The property is well-maintained.', date: 'Jun 2026', property: listing.title },
-    { name: 'Sadia Islam', stars: 5, comment: 'Excellent condition, felt like home immediately. Highly recommend.', date: 'Apr 2026', property: listing.title },
-    { name: 'Rifat Hassan', stars: 3, comment: 'Average experience. Some maintenance issues took a while to resolve.', date: 'Feb 2026', property: listing.title },
-  ]
+  useEffect(() => {
+    let active = true
+    const propId = listing.propertyId || listing.id
+    if (!propId) return
+
+    setReviewsLoading(true)
+    setReviewsLoadError(false)
+    setFetchedReviews([])
+    api.get<Array<any> | { data?: Array<any> }>(`/api/v1/listings/${propId}/reviews`)
+      .then(res => {
+        if (!active) return
+        const list = Array.isArray(res) ? res : Array.isArray((res as any)?.data) ? (res as any).data : []
+        setFetchedReviews(list.map((r: any) => ({
+          name: r.studentName || r.name || 'UIU Student',
+          stars: Number(r.landlordStars || r.propertyStars || 0),
+          comment: r.comment || r.text || '',
+          date: r.date || (r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : 'Recent'),
+          property: r.property || listing.title || 'UIU Rental',
+        })))
+      })
+      .catch(() => {
+        if (active) setReviewsLoadError(true)
+      })
+      .finally(() => {
+        if (active) setReviewsLoading(false)
+      })
+
+    return () => { active = false }
+  }, [listing.id, listing.propertyId])
+
+  const activeReviews = fetchedReviews
+  const avgRating = fetchedReviews.length > 0
+    ? (fetchedReviews.reduce((sum, r) => sum + r.stars, 0) / fetchedReviews.length).toFixed(1)
+    : '—'
+  const totalReviewsCount = fetchedReviews.length
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
@@ -67,7 +108,7 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
               <svg width="16" height="16" viewBox="0 0 24 24" fill={isFavorited ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
             </button>
           )}
-          <span className="font-mono font-bold text-[#1a1a18] text-lg">৳{listing.price.toLocaleString()}</span>
+          <span className="font-mono font-bold text-[#1a1a18] text-lg">৳{(Number(listing.price) || 0).toLocaleString()}</span>
           <span className="text-xs text-gray-500 ml-1">/mo</span>
         </div>
         {/* Nav arrows */}
@@ -127,7 +168,7 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
           <div className="bg-white rounded-2xl p-5 shadow-sm">
             <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">Room Breakdown</div>
             <div className="grid grid-cols-2 gap-3">
-              {listing.rooms && Object.entries(listing.rooms).filter(([, v]) => v > 0).map(([room, count]) => {
+              {listing.rooms && typeof listing.rooms === 'object' && Object.entries(listing.rooms).filter(([, v]) => typeof v === 'number' && v > 0).map(([room, count]) => {
                 const sizeMap: Record<string, number | undefined> = listing.roomSizes ?? {}
                 const size = sizeMap[room]
                 const icons: Record<string, string> = { bedroom: '🛏', living: '🛋', bathroom: '🚿', kitchen: '🍳', veranda: '🌿' }
@@ -173,9 +214,10 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
           <div className="bg-white rounded-2xl p-5 shadow-sm">
             <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Facilities included</div>
             <div className="flex flex-wrap gap-2">
-              {listing.facilities.map(f => (
+              {(listing.facilities ?? []).map(f => (
                 <span key={f} className="bg-gray-100 text-[#1a1a18] border border-[#1a1a18]/20 px-3 py-2 rounded-full text-xs font-semibold">{f}</span>
               ))}
+              {!(listing.facilities?.length) && <span className="text-sm text-gray-400">No facilities listed</span>}
             </div>
           </div>
 
@@ -193,15 +235,15 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
             <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Landlord</div>
             <div className="flex items-center gap-3 mb-3">
               <div className="w-11 h-11 bg-[#1a1a18] rounded-full flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
-                {listing.landlord[0]}
+                {(listing.landlord || 'L')[0]}
               </div>
               <div>
                 <div className="font-semibold text-[#1a1a18]">{listing.landlord}</div>
                 <div className="text-xs text-gray-500">Verified · Since 2022</div>
               </div>
             </div>
-            <div className="flex gap-0.5 mb-1">{[1,2,3,4,5].map(s => <span key={s} className={`text-sm ${s <= 4 ? 'text-amber-400' : 'text-gray-200'}`}>★</span>)}</div>
-            <div className="text-xs text-gray-500 mb-3">4.0 · 12 reviews</div>
+            <div className="flex gap-0.5 mb-1">{[1,2,3,4,5].map(s => <span key={s} className={`text-sm ${s <= Math.round(Number(avgRating)) ? 'text-amber-400' : 'text-gray-200'}`}>★</span>)}</div>
+            <div className="text-xs text-gray-500 mb-3">{avgRating} · {totalReviewsCount} {totalReviewsCount === 1 ? 'review' : 'reviews'}</div>
             <button
               onClick={() => setShowReviewsModal(true)}
               className="w-full text-xs font-semibold text-[#1a1a18] border border-gray-200 py-2 rounded-xl hover:bg-gray-50 transition-colors"
@@ -216,10 +258,10 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
             {[
               ['Property ID', listing.propertyId ?? '—'],
               ['Availability', listing.status === 'available' ? 'Available now' : 'Currently occupied'],
-              ['Room type', listing.type],
-              ['Distance', listing.distance + ' from UIU'],
-              ['Monthly rent', '৳' + listing.price.toLocaleString()],
-              ['Deposit', '৳' + (listing.price * 2).toLocaleString() + ' (2 months)'],
+              ['Room type', listing.type || 'Single'],
+              ['Distance', (listing.distance || '0.5 km') + ' from UIU'],
+              ['Monthly rent', '৳' + (Number(listing.price) || 0).toLocaleString()],
+              ['Deposit', '৳' + ((Number(listing.price) || 0) * 2).toLocaleString() + ' (2 months)'],
               ['Utilities', 'Water included'],
             ].map(([k, v]) => (
               <div key={k} className="flex justify-between text-sm border-b border-gray-100 pb-2 last:border-0 last:pb-0">
@@ -227,6 +269,31 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
                 <span className="font-medium text-[#1a1a18] text-right">{v}</span>
               </div>
             ))}
+          </div>
+
+          {/* Current tenants */}
+          <div className="bg-white rounded-2xl p-5 shadow-sm">
+            <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Current Tenants</div>
+            {currentTenants.length === 0 ? (
+              <div className="text-sm text-gray-400">No current tenants assigned to this property.</div>
+            ) : (
+              <div className="space-y-3">
+                {currentTenants.map((tenant) => (
+                  <div key={`${tenant.name}-${tenant.studentId ?? 'id'}`} className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-8 h-8 rounded-full bg-[#111827] text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
+                        {(tenant.name || 'T')[0].toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-[#1a1a18] truncate">{tenant.name}</div>
+                        {tenant.studentId && <div className="text-[11px] text-gray-500">Student ID: {tenant.studentId}</div>}
+                      </div>
+                    </div>
+                    <span className="text-[10px] uppercase tracking-wide font-semibold bg-emerald-50 text-emerald-700 px-2 py-1 rounded-full">Current</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* CTA */}
@@ -251,18 +318,21 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
             </div>
             {/* Overall */}
             <div className="flex items-center gap-3 bg-amber-50 rounded-xl p-3 mb-4">
-              <div className="text-3xl font-bold text-amber-500">4.0</div>
+              <div className="text-3xl font-bold text-amber-500">{avgRating}</div>
               <div>
-                <div className="flex gap-0.5">{[1,2,3,4,5].map(s => <span key={s} className={`text-sm ${s <= 4 ? 'text-amber-400' : 'text-gray-200'}`}>★</span>)}</div>
-                <div className="text-xs text-gray-500 mt-0.5">Overall landlord rating · 12 reviews</div>
+                <div className="flex gap-0.5">{[1,2,3,4,5].map(s => <span key={s} className={`text-sm ${s <= Math.round(Number(avgRating)) ? 'text-amber-400' : 'text-gray-200'}`}>★</span>)}</div>
+                <div className="text-xs text-gray-500 mt-0.5">Overall rating · {totalReviewsCount} {totalReviewsCount === 1 ? 'review' : 'reviews'}</div>
               </div>
             </div>
             <div className="overflow-y-auto space-y-3 flex-1">
-              {sampleReviews.map((r, i) => (
+              {reviewsLoading && <p className="text-sm text-gray-500 py-6 text-center">Loading reviews…</p>}
+              {!reviewsLoading && reviewsLoadError && <p className="text-sm text-red-700 py-6 text-center">Reviews could not be loaded.</p>}
+              {!reviewsLoading && !reviewsLoadError && activeReviews.length === 0 && <p className="text-sm text-gray-500 py-6 text-center">No reviews for this listing yet.</p>}
+              {!reviewsLoading && !reviewsLoadError && activeReviews.map((r, i) => (
                 <div key={i} className="border border-gray-100 rounded-xl p-4">
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-[#111827] text-white text-xs font-bold flex items-center justify-center">{r.name[0]}</div>
+                      <div className="w-7 h-7 rounded-full bg-[#111827] text-white text-xs font-bold flex items-center justify-center">{(r.name || 'U')[0]}</div>
                       <span className="text-sm font-semibold text-[#1a1a18]">{r.name}</span>
                     </div>
                     <span className="text-xs text-gray-400">{r.date}</span>

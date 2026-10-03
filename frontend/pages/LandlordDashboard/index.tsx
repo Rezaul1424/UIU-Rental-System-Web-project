@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Listing } from '../../types'
-import { listings, rentTransactions } from '../../data'
 import ListingDetailPage from '../../components/ListingDetail'
 import NotificationBell from '../../components/NotificationBell'
+import { addLandlordMaintenanceComment, createListing, deleteListing, getApplications, getLeases, getLandlordComplaints, getLandlordMaintenanceComments, getMaintenanceRequests, getMyListings, getProfile, reviewApplication, submitLandlordComplaint as submitLandlordComplaintApi, updateListing, updateMaintenanceStatus, updateProfile as updateLandlordProfile } from '../../lib/landlordApi'
 import { landlordNotifs } from './constants'
 import LandlordSidebarNav, { type LandlordPage } from './Sidebar'
 import type { MaintReq, RequestItem, ChatMsg, MaintStage } from './types'
@@ -20,9 +20,154 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
 
   const [page, setPage] = useState<LandlordPage>('overview')
   const [landlordView, setLandlordView] = useState<Listing | null>(null)
+  const [dashboardLoading, setDashboardLoading] = useState(false)
+  const [dashboardError, setDashboardError] = useState('')
+  const [landlordProfile, setLandlordProfile] = useState<{ name?: string; email?: string; propertyCount?: number } | null>(null)
+  const [myListings, setMyListings] = useState<Listing[]>([])
+  const [leases, setLeases] = useState<Array<{ id?: string; propertyId: string; propertyTitle?: string; propertyCode?: string; studentId?: string; studentName?: string; status?: string; monthlyRent?: number; startDate?: string; endDate?: string }>>([])
+  const [requests, setRequests] = useState<RequestItem[]>([])
+  const [mReqs, setMReqs] = useState<MaintReq[]>([])
+  type LandlordComplaint = { id: string; against: string; property: string; category: string; subject: string; description: string; date: string; status: 'Submitted' | 'Under Review' | 'Responded' | 'Resolved' | 'Closed' }
+  const [landlordComplaints, setLandlordComplaints] = useState<LandlordComplaint[]>([])
+  const [showLandlordComplaintForm, setShowLandlordComplaintForm] = useState(false)
+  const [lcForm, setLcForm] = useState({ against: '', property: '', category: 'Late Payment', subject: '', description: '' })
+  const complaintTargets = useMemo(() => {
+    const seen = new Set<string>()
+
+    return leases
+      .filter((lease) => lease.studentName && (lease.propertyTitle || lease.propertyCode))
+      .filter((lease) => ['active', 'ended', 'terminated'].includes(String(lease.status ?? '').toLowerCase()))
+      .map((lease) => {
+        const studentName = lease.studentName?.trim() ?? ''
+        const propertyTitle = lease.propertyTitle?.trim() || lease.propertyCode?.trim() || 'Property'
+        const key = `${studentName}::${propertyTitle}`
+
+        if (!studentName || seen.has(key)) return null
+        seen.add(key)
+
+        return { studentName, propertyTitle }
+      })
+      .filter((target): target is { studentName: string; propertyTitle: string } => Boolean(target))
+  }, [leases])
+
+  const complaintPropertyOptions = useMemo(() => {
+    if (!lcForm.against) return complaintTargets.map((target) => target.propertyTitle)
+    return complaintTargets
+      .filter((target) => target.studentName === lcForm.against)
+      .map((target) => target.propertyTitle)
+  }, [complaintTargets, lcForm.against])
   const openLandlordListing = (l: Listing) => { setLandlordView(l); setPage('listing-detail') }
+
+  const formatDisplayDate = (value?: string) => {
+    if (!value) return 'N/A'
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return 'N/A'
+    return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+  }
+
+  const mapStageToStatus = (stage: MaintStage): 'open' | 'in-progress' | 'resolved' => {
+    if (stage >= 5) return 'resolved'
+    if (stage >= 2) return 'in-progress'
+    return 'open'
+  }
+
+  useEffect(() => {
+    let active = true
+
+    const loadLandlordData = async () => {
+      setDashboardLoading(true)
+      setDashboardError('')
+
+      try {
+        const [profileResult, listingsResult, applicationsResult, leasesResult, maintenanceResult, landComplaintsResult] = await Promise.all([
+          getProfile().catch(() => null),
+          getMyListings().catch(() => []),
+          getApplications().catch(() => []),
+          getLeases().catch(() => []),
+          getMaintenanceRequests().catch(() => []),
+          getLandlordComplaints().catch(() => []),
+        ])
+
+        if (!active) return
+
+        if (profileResult) {
+          setLandlordProfile(profileResult)
+        }
+        if (Array.isArray(listingsResult)) {
+          setMyListings(listingsResult)
+        }
+        if (Array.isArray(applicationsResult)) {
+          setRequests(applicationsResult.map((application) => ({
+            id: Number(application.id ?? Date.now()),
+            student: application.studentName || `Student ${application.studentId}`,
+            studentId: application.studentCardNo || String(application.studentId ?? 'N/A'),
+            dept: application.department || 'UIU Student',
+            phone: application.contactPhone || 'N/A',
+            moveIn: application.moveInDate ? new Date(application.moveInDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Flexible',
+            employment: application.employment || 'Student',
+            message: application.message ?? 'New application submitted.',
+            listing: application.propertyTitle || (application.propertyCode ? `Property ${application.propertyCode}` : `Property ${application.propertyId}`),
+            date: application.createdAt ? formatDisplayDate(application.createdAt) : 'N/A',
+            status: ['accepted', 'rejected', 'cancelled'].includes(application.status) ? (application.status === 'accepted' ? 'approved' : 'rejected') : 'pending',
+          })))
+        }
+        if (Array.isArray(leasesResult)) {
+          setLeases(leasesResult)
+        }
+        if (Array.isArray(maintenanceResult)) {
+          setMReqs(maintenanceResult.map((request) => ({
+            id: Number(request.id ?? Date.now()),
+            title: request.issue ?? 'Maintenance issue',
+            description: request.description ?? 'Maintenance request submitted by the tenant.',
+            listing: request.propertyTitle || request.propertyCode || `Property ${request.propertyId}`,
+            tenant: request.studentName || `Student ${request.studentId}`,
+            date: request.createdAt ? formatDisplayDate(request.createdAt) : 'N/A',
+            priority: ['Low', 'Medium', 'High'].includes(String(request.priority)) ? (request.priority as 'Low' | 'Medium' | 'High') : 'Medium',
+            stage: request.stage as MaintStage,
+            estimatedDate: 'TBD',
+            comments: [{ from: 'tenant', text: request.description ?? 'Maintenance request submitted.', date: request.createdAt ? formatDisplayDate(request.createdAt) : 'Today' }],
+            hasPhotos: false,
+          })))
+        }
+        if (Array.isArray(landComplaintsResult) && landComplaintsResult.length > 0) {
+          setLandlordComplaints(landComplaintsResult.map((c: any) => ({
+            id: c.id ?? `CMP-${Date.now()}`,
+            against: c.accusedName ?? '',
+            property: c.propertyTitle ?? '',
+            category: c.category ?? 'Other',
+            subject: c.description?.split(' — ')[0] ?? '',
+            description: c.description?.split(' — ').slice(1).join(' — ') ?? c.description ?? '',
+            date: c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '',
+            status: (['Submitted', 'Under Review', 'Responded', 'Resolved', 'Closed'].includes(c.status ?? '') ? c.status : 'Submitted') as any,
+          })))
+        }
+      } catch (error) {
+        if (!active) return
+        setDashboardError(error instanceof Error ? error.message : 'Unable to load landlord dashboard data.')
+      } finally {
+        if (active) setDashboardLoading(false)
+      }
+    }
+
+    loadLandlordData()
+    return () => { active = false }
+  }, [])
+
+  const handleUpdateLandlordProfile = async (data: { name?: string; phone?: string; companyName?: string }): Promise<boolean> => {
+    try {
+      const updated = await updateLandlordProfile(data)
+      const res = updated && 'data' in updated ? (updated as any).data : updated
+      setLandlordProfile(prev => ({ ...prev, ...res }))
+      setDashboardError('')
+      return true
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Unable to update profile.')
+      return false
+    }
+  }
+
   const [editListingId, setEditListingId] = useState<number | null>(null)
-  const [editForm, setEditForm] = useState({ title: '', type: 'Single', price: '', distance: '', description: '' })
+  const [editForm, setEditForm] = useState({ title: '', type: 'Single', price: '', distance: '', description: '', status: 'approved' })
   const [editFacilities, setEditFacilities] = useState<string[]>([])
   const toggleEditFacility = (f: string) => setEditFacilities(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f])
   const [editAddrForm, setEditAddrForm] = useState({ street: '', area: '', city: 'Dhaka', district: 'Dhaka', postal: '' })
@@ -54,11 +199,12 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
     const l = myListings.find(m => m.id === id)
     if (!l) return
     setEditListingId(id)
-    setEditForm({ title: l.title, type: l.type, price: String(l.price), distance: String(l.distance), description: 'Comfortable and well-maintained unit with easy access to UIU campus.' })
+    setEditForm({ title: l.title, type: l.type, price: String(l.price), distance: String(l.distance), description: 'Comfortable and well-maintained unit with easy access to UIU campus.', status: l.status || 'approved' })
     setEditFacilities(l.facilities ?? [])
-    setEditAddrForm({ street: '', area: '', city: 'Dhaka', district: 'Dhaka', postal: '' })
-    setEditMapPin(null)
-    setEditMapKm('')
+    // Pre-populate address from listing data if available
+    setEditAddrForm({ street: l.street || '', area: l.area || '', city: 'Dhaka', district: 'Dhaka', postal: '' })
+    setEditMapPin(l.mapPin ?? null)
+    setEditMapKm(l.mapPin ? String(Math.hypot(l.mapPin.x - 50, l.mapPin.y - 50) * 0.042).slice(0, 3) : '')
     setPage('edit-listing')
   }
 
@@ -113,6 +259,128 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
   const [maxTenants, setMaxTenants] = useState('')
   const [parkingAvail, setParkingAvail] = useState<'none' | 'motorcycle' | 'car' | 'both'>('none')
 
+  const refreshMyListings = async () => {
+    const nextListings = await getMyListings().catch(() => [])
+    setMyListings(nextListings)
+  }
+
+  const refreshApplications = async () => {
+    const nextApplications = await getApplications().catch(() => [])
+    setRequests(nextApplications.map((application) => ({
+      id: Number(application.id ?? Date.now()),
+      student: `Student ${application.studentId}`,
+      studentId: String(application.studentId ?? 'N/A'),
+      dept: 'UIU Student',
+      phone: 'N/A',
+      moveIn: 'Flexible',
+      employment: 'Student',
+      message: application.message ?? 'New application submitted.',
+      listing: `Property ${application.propertyId}`,
+      date: application.createdAt ? new Date(application.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A',
+      status: ['accepted', 'rejected', 'cancelled'].includes(application.status) ? (application.status === 'accepted' ? 'approved' : 'rejected') : 'pending',
+    })))
+  }
+
+  const normalizeListingType = (value: string | undefined): 'apartment' | 'house' | 'room' | 'studio' | 'duplex' | 'sublet' => {
+    const normalized = (value || 'Single').trim().toLowerCase()
+
+    switch (normalized) {
+      case 'single':
+        return 'studio'
+      case 'shared':
+        return 'room'
+      case 'mess':
+        return 'apartment'
+      case 'sublet':
+        return 'sublet'
+      case 'apartment':
+        return 'apartment'
+      case 'house':
+        return 'house'
+      case 'room':
+        return 'room'
+      case 'studio':
+        return 'studio'
+      case 'duplex':
+        return 'duplex'
+      default:
+        return 'apartment'
+    }
+  }
+
+  const handleAddListing = async () => {
+    if (!form.title.trim() || !form.price || !addrForm.street.trim()) {
+      setDashboardError('Please complete the listing title, price, and address before publishing.')
+      return
+    }
+
+    try {
+      const payload = {
+        title: form.title.trim(),
+        description: form.description.trim() || 'Available UIU-area rental property.',
+        type: normalizeListingType(form.type),
+        priceBDT: Number(form.price),
+        bedrooms: roomCounts.bedroom || 1,
+        roommateCapacity: Number(maxTenants || 1),
+        parkingAvailable: parkingAvail !== 'none',
+        facilities,
+        address: {
+          line1: addrForm.street || 'UIU Area',
+          area: addrForm.area || 'UIU Area',
+          city: addrForm.city || 'Dhaka',
+          district: addrForm.district || 'Dhaka',
+          // map_pin_x/y stored as 0-100 percentage coords, not real lat/lng
+          latitude: mapPin?.x ?? 50,
+          longitude: mapPin?.y ?? 50,
+        },
+        status: 'approved',
+      }
+
+      await createListing(payload)
+      await refreshMyListings()
+      setPage('listings')
+      setDashboardError('')
+      setForm({ title: '', type: 'Single', price: '', description: '' })
+      setAddrForm({ street: '', area: '', city: 'Dhaka', district: 'Dhaka', postal: '' })
+      setFacilities([])
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Listing creation failed.')
+    }
+  }
+
+  const handleUpdateListing = async () => {
+    if (editListingId === null) return
+    try {
+      const payload = {
+        title: editForm.title.trim(),
+        description: editForm.description.trim() || 'Updated UIU-area rental property.',
+        type: normalizeListingType(editForm.type),
+        priceBDT: Number(editForm.price || 0),
+        bedrooms: roomCounts.bedroom || 1,
+        roommateCapacity: Number(maxTenants || 1),
+        parkingAvailable: parkingAvail !== 'none',
+        facilities: editFacilities,
+        address: {
+          line1: editAddrForm.street || 'UIU Area',
+          area: editAddrForm.area || 'UIU Area',
+          city: editAddrForm.city || 'Dhaka',
+          district: editAddrForm.district || 'Dhaka',
+          // map_pin_x/y stored as 0-100 percentage coords, not real lat/lng
+          latitude: editMapPin?.x ?? 50,
+          longitude: editMapPin?.y ?? 50,
+        },
+        status: editForm.status || 'approved',
+      }
+
+      await updateListing(editListingId, payload)
+      await refreshMyListings()
+      setPage('listings')
+      setDashboardError('')
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Listing update failed.')
+    }
+  }
+
   const updateRoomCount = (room: string, count: number) => {
     const n = Math.max(0, count)
     setRoomCounts(c => ({ ...c, [room]: n }))
@@ -144,83 +412,146 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
   }
 
   // ── Rental requests ──────────────────────────────────────────────────────────
-  const [requests, setRequests] = useState<RequestItem[]>([
-    { id: 1, student: 'Rifat Hassan', studentId: '2024-EEE-059', dept: 'B.Sc. EEE, Batch 2024', phone: '+880 1712-345678', moveIn: '1 Sep 2026', employment: 'Student (Family Support)', message: "I'm a first-year student looking for a quiet place close to campus. I am well-mannered and responsible.", listing: 'Studio near Gate 3', date: '29 Jul 2026', status: 'pending' },
-    { id: 2, student: 'Alif Hossain', studentId: '2023-BBA-201', dept: 'BBA, Batch 2023', phone: '+880 1898-765432', moveIn: '15 Aug 2026', employment: 'Student (Part-time Job)', message: 'Looking for a bachelor flat to share with one friend. We are both UIU students and can provide references.', listing: 'Bachelor Flat – North Side', date: '27 Jul 2026', status: 'pending' },
-    { id: 3, student: 'Tanvir Ahmed', studentId: '2023-CSE-104', dept: 'B.Sc. CSE, Batch 2023', phone: '+880 1755-112233', moveIn: '1 Jul 2026', employment: 'Student (Scholarship)', message: 'I have been looking for a unit near Gate 3 for easy access to the CS department. References available.', listing: 'Studio near Gate 3', date: '1 Jul 2026', status: 'approved' },
-  ])
   const [expandedRequestId, setExpandedRequestId] = useState<number | null>(null)
   const pendingRequests = requests.filter(r => r.status === 'pending').length
-  const approveRequest = (id: number) => setRequests(rs => rs.map(r => r.id === id ? { ...r, status: 'approved' } : r))
-  const rejectRequest  = (id: number) => setRequests(rs => rs.map(r => r.id === id ? { ...r, status: 'rejected' } : r))
+  const activeTenantCount = leases.filter((lease) => lease.status === 'active').length
+  const monthlyRevenue = leases.reduce((sum, lease) => sum + Number(lease.monthlyRent ?? 0), 0)
+  const liveLeaseTransactions = leases.map((lease) => ({
+    id: Number(lease.id ?? lease.propertyId ?? Date.now()),
+    tenant: lease.studentName || (lease.studentId ? `Student ${lease.studentId}` : 'Tenant'),
+    listing: lease.propertyTitle || (lease.propertyCode ? `${lease.propertyCode}` : (lease.propertyId ? `Property ${lease.propertyId}` : 'Lease')),
+    amount: Number(lease.monthlyRent ?? 0),
+    month: lease.startDate ? new Date(lease.startDate).toLocaleString('default', { month: 'short', year: 'numeric' }) : 'Current cycle',
+    paid: lease.status === 'active',
+  }))
+  const approveRequest = async (id: number) => {
+    try {
+      await reviewApplication(id, { status: 'accepted' })
+      setRequests(rs => rs.map(r => r.id === id ? { ...r, status: 'approved' } : r))
+      const [refreshedLeases, refreshedListings] = await Promise.all([
+        getLeases().catch(() => []),
+        getMyListings().catch(() => []),
+      ])
+      if (Array.isArray(refreshedLeases)) setLeases(refreshedLeases)
+      if (Array.isArray(refreshedListings)) setMyListings(refreshedListings)
+      setDashboardError('')
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Unable to approve this application.')
+    }
+  }
+  const rejectRequest = async (id: number) => {
+    try {
+      await reviewApplication(id, { status: 'rejected' })
+      setRequests(rs => rs.map(r => r.id === id ? { ...r, status: 'rejected' } : r))
+      setDashboardError('')
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Unable to reject this application.')
+    }
+  }
 
   // ── Maintenance ──────────────────────────────────────────────────────────────
-  const [mReqs, setMReqs] = useState<MaintReq[]>([
-    {
-      id: 1, title: 'AC not cooling properly', description: 'The air conditioner in the bedroom has stopped cooling. Fan runs but no cold air. Already checked power supply.',
-      listing: 'Studio near Gate 3', tenant: 'Tanvir Ahmed', date: '25 Jul 2026', priority: 'High', stage: 2,
-      estimatedDate: '3 Aug 2026',
-      comments: [
-        { from: 'tenant', text: 'The AC has been making noise too. Please fix ASAP, it is very hot.', date: '25 Jul' },
-        { from: 'landlord', text: "I've approved the request. A technician will be assigned this week.", date: '26 Jul' },
-      ],
-      hasPhotos: true,
-    },
-    {
-      id: 2, title: 'Leaking pipe in bathroom', description: 'Water dripping from under the sink pipe joint. Placed a bucket but it fills up every 2–3 hours.',
-      listing: 'Shared Mess – South Campus', tenant: 'Sadia Islam', date: '22 Jul 2026', priority: 'Medium', stage: 4,
-      estimatedDate: '31 Jul 2026',
-      comments: [
-        { from: 'tenant', text: 'This has been going on for a week. The floor tiles are getting damaged.', date: '22 Jul' },
-        { from: 'landlord', text: 'Technician Karim is assigned. He will visit tomorrow between 10am and 12pm.', date: '23 Jul' },
-        { from: 'tenant', text: 'Karim arrived and did a temporary fix. Awaiting permanent repair.', date: '24 Jul' },
-      ],
-      hasPhotos: true,
-    },
-    {
-      id: 3, title: 'Door lock broken', description: 'The main door lock cylinder is jammed and the key no longer turns smoothly. Door can be opened but only with difficulty.',
-      listing: 'Bachelor Flat – North Side', tenant: 'Rifat Hassan', date: '20 Jul 2026', priority: 'Urgent', stage: 5,
-      estimatedDate: '22 Jul 2026',
-      comments: [
-        { from: 'tenant', text: 'This is a security issue. Please prioritize.', date: '20 Jul' },
-        { from: 'landlord', text: 'Understood. Emergency lock replacement ordered.', date: '20 Jul' },
-        { from: 'landlord', text: 'Replacement complete. New keys handed to tenant.', date: '22 Jul' },
-      ],
-      hasPhotos: false,
-    },
-  ])
   const [expandedMaintId, setExpandedMaintId] = useState<number | null>(null)
   const [newComment, setNewComment] = useState<Record<number, string>>({})
 
-  const advanceStage = (id: number) =>
-    setMReqs(ms => ms.map(m => m.id === id && m.stage < 6 ? { ...m, stage: (m.stage + 1) as MaintStage } : m))
-  const revertStage = (id: number) =>
-    setMReqs(ms => ms.map(m => m.id === id && m.stage > 0 ? { ...m, stage: (m.stage - 1) as MaintStage } : m))
+  const advanceStage = async (id: number) => {
+    const current = mReqs.find((item) => item.id === id)
+    if (!current || current.stage >= 6) return
+    const nextStage = (current.stage + 1) as MaintStage
+    try {
+      await updateMaintenanceStatus(id, { stage: nextStage, status: mapStageToStatus(nextStage) })
+      setMReqs(ms => ms.map(m => m.id === id ? { ...m, stage: nextStage } : m))
+      setDashboardError('')
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Unable to update maintenance request status.')
+    }
+  }
+  const revertStage = async (id: number) => {
+    const current = mReqs.find((item) => item.id === id)
+    if (!current || current.stage <= 0) return
+    const nextStage = (current.stage - 1) as MaintStage
+    try {
+      await updateMaintenanceStatus(id, { stage: nextStage, status: mapStageToStatus(nextStage) })
+      setMReqs(ms => ms.map(m => m.id === id ? { ...m, stage: nextStage } : m))
+      setDashboardError('')
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Unable to revert maintenance request status.')
+    }
+  }
 
-  const addComment = (id: number) => {
+  const addComment = async (id: number) => {
     const text = newComment[id]?.trim()
     if (!text) return
+    // Optimistic update
     setMReqs(ms => ms.map(m => m.id === id
       ? { ...m, comments: [...m.comments, { from: 'landlord', text, date: 'Now' }] }
       : m
     ))
     setNewComment(nc => ({ ...nc, [id]: '' }))
+    try {
+      await addLandlordMaintenanceComment(id, text)
+    } catch (err) {
+      console.error('Failed to send maintenance comment:', err)
+    }
+  }
+
+  const loadLandlordMaintComments = async (id: number) => {
+    try {
+      const comments = await getLandlordMaintenanceComments(id)
+      setMReqs(ms => ms.map(m => m.id === id
+        ? {
+            ...m,
+            comments: comments.map((c: any) => ({
+              from: (c.from === 'landlord' ? 'landlord' : 'tenant') as 'landlord' | 'tenant',
+              text: c.text ?? c.message ?? '',
+              date: c.date ?? 'N/A',
+            })),
+          }
+        : m
+      ))
+    } catch (err) {
+      console.error('Failed to load maintenance comments:', err)
+    }
   }
 
 
   // ── Chat ─────────────────────────────────────────────────────────────────────
   // Current tenants: active lease; Potential tenants: applicants
-  const currentTenants = [
-    { name: 'Tanvir Ahmed', listing: 'Studio near Gate 3', category: 'current' as const },
-    { name: 'Sadia Islam',  listing: 'Shared Mess – South Campus', category: 'current' as const },
-  ]
-  const potentialTenants = [
-    { name: 'Rifat Hassan', listing: 'Studio near Gate 3', category: 'potential' as const },
-    { name: 'Alif Hossain', listing: 'Bachelor Flat – North Side', category: 'potential' as const },
-  ]
+  const currentTenants = useMemo(() => {
+    const activeLeaseTenants = leases
+      .filter((lease) => lease.status === 'active')
+      .map((lease) => ({
+        name: lease.studentName || (lease.studentId ? `Student ${lease.studentId}` : 'Active Tenant'),
+        listing: lease.propertyTitle || lease.propertyCode || (lease.propertyId ? `Property ${lease.propertyId}` : 'Current listing'),
+        category: 'current' as const,
+      }))
 
-  const [activeChatName, setActiveChatName] = useState('Tanvir Ahmed')
-  const [chatThreads, setChatThreads] = useState<Record<string, ChatMsg[]>>({
+    return activeLeaseTenants.length > 0
+      ? activeLeaseTenants
+      : [
+          { name: 'Tanvir Ahmed', listing: 'Studio near Gate 3', category: 'current' as const },
+          { name: 'Sadia Islam', listing: 'Shared Mess – South Campus', category: 'current' as const },
+        ]
+  }, [leases])
+
+  const potentialTenants = useMemo(() => {
+    const applicantContacts = requests
+      .filter((request) => request.status === 'pending')
+      .map((request) => ({
+        name: request.student || (request.studentId ? `Student ${request.studentId}` : 'Applicant'),
+        listing: request.listing || 'Pending property',
+        category: 'potential' as const,
+      }))
+
+    return applicantContacts.length > 0
+      ? applicantContacts
+      : [
+          { name: 'Rifat Hassan', listing: 'Studio near Gate 3', category: 'potential' as const },
+          { name: 'Alif Hossain', listing: 'Bachelor Flat – North Side', category: 'potential' as const },
+        ]
+  }, [requests])
+
+  const [activeChatName, setActiveChatName] = useState(currentTenants[0]?.name ?? 'Tanvir Ahmed')
+  const [chatThreads, setChatThreads] = useState<Record<string, ChatMsg[]>>(() => ({
     'Tanvir Ahmed': [
       { from: 'tenant', text: 'Hello! The AC has been making a loud noise lately.' },
       { from: 'landlord', text: "Thanks for letting me know. I'll send a technician tomorrow." },
@@ -234,7 +565,15 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
       { from: 'tenant', text: 'I submitted an application for the Studio near Gate 3. Can I schedule a viewing?' },
     ],
     'Alif Hossain': [],
-  })
+    ...(currentTenants[0] && currentTenants[0].name !== 'Tanvir Ahmed' ? { [currentTenants[0].name]: [{ from: 'tenant', text: 'I am following up on my maintenance request.' }] } : {}),
+    ...(potentialTenants[0] && !['Rifat Hassan', 'Alif Hossain'].includes(potentialTenants[0].name) ? { [potentialTenants[0].name]: [{ from: 'tenant', text: 'I would like to ask about viewing availability.' }] } : {}),
+  }))
+
+  useEffect(() => {
+    if (!currentTenants.some((tenant) => tenant.name === activeChatName) && !potentialTenants.some((tenant) => tenant.name === activeChatName)) {
+      setActiveChatName(currentTenants[0]?.name ?? potentialTenants[0]?.name ?? 'Tanvir Ahmed')
+    }
+  }, [activeChatName, currentTenants, potentialTenants])
   const [chatInput, setChatInput] = useState('')
 
   const sendChat = () => {
@@ -242,8 +581,6 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
     setChatThreads(t => ({ ...t, [activeChatName]: [...(t[activeChatName] ?? []), { from: 'landlord', text: chatInput }] }))
     setChatInput('')
   }
-
-  const myListings = listings.slice(0, 3)
 
   // ── Confirmation overlay state ───────────────────────────────────────────────
   const [showLandlordSignOutConfirm, setShowLandlordSignOutConfirm] = useState(false)
@@ -253,13 +590,23 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
   const [showDiscardEditConfirm, setShowDiscardEditConfirm] = useState(false)
   const [showDiscardAddConfirm, setShowDiscardAddConfirm] = useState(false)
 
-  // Landlord complaints
-  type LandlordComplaint = { id: string; against: string; property: string; category: string; subject: string; description: string; date: string; status: 'Submitted' | 'Under Review' | 'Responded' | 'Resolved' | 'Closed' }
-  const [landlordComplaints, setLandlordComplaints] = useState<LandlordComplaint[]>([])
-  const [showLandlordComplaintForm, setShowLandlordComplaintForm] = useState(false)
-  const [lcForm, setLcForm] = useState({ against: '', property: '', category: 'Late Payment', subject: '', description: '' })
-  const submitLandlordComplaint = () => {
-    if (!lcForm.subject.trim() || !lcForm.against.trim()) return
+  const handleRemoveListing = async (listingId: number | null) => {
+    if (listingId === null || Number.isNaN(listingId)) return
+    try {
+      await deleteListing(listingId)
+      setMyListings((prev) => prev.filter((item) => item.id !== listingId))
+      setShowRemoveListingConfirm(false)
+      setPage('listings')
+      setDashboardError('')
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Unable to remove this listing.')
+    }
+  }
+
+  // Landlord complaints submit handler
+  const submitLandlordComplaint = async () => {
+    if (!lcForm.subject.trim() || !lcForm.against.trim() || !lcForm.property.trim()) return
+    const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
     setLandlordComplaints(prev => [...prev, {
       id: `CMP-${String(prev.length + 1).padStart(3, '0')}`,
       against: lcForm.against,
@@ -267,15 +614,27 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
       category: lcForm.category,
       subject: lcForm.subject,
       description: lcForm.description,
-      date: '31 Jul 2026',
+      date: today,
       status: 'Submitted',
     }])
+    const savedForm = { ...lcForm }
     setLcForm({ against: '', property: '', category: 'Late Payment', subject: '', description: '' })
     setShowLandlordComplaintForm(false)
+    try {
+      await submitLandlordComplaintApi({
+        against: savedForm.against,
+        property: savedForm.property,
+        category: savedForm.category,
+        subject: savedForm.subject,
+        description: savedForm.description,
+      })
+    } catch (err) {
+      console.error('Failed to submit landlord complaint to backend:', err)
+    }
   }
 
   const isEditDirty = editListingId !== null && (() => {
-    const orig = listings.find(l => l.id === editListingId)
+    const orig = myListings.find(l => l.id === editListingId)
     if (!orig) return false
     return editForm.title !== orig.title || editForm.price !== String(orig.price) || editForm.distance !== String(orig.distance) || editForm.type !== orig.type
   })()
@@ -289,12 +648,22 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
         setPage={setPage}
         pendingRequests={pendingRequests}
         maintenanceCount={mReqs.filter(m => m.stage < 5).length}
-        userName={userName}
+        userName={landlordProfile?.name || userName}
         onSignOut={() => setShowLandlordSignOutConfirm(true)}
       />
 
       {/* Main */}
       <main className="flex-1 overflow-auto bg-[#f8fafc]">
+        {dashboardLoading && (
+          <div className="px-6 pt-6">
+            <div className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-700">Loading your landlord dashboard...</div>
+          </div>
+        )}
+        {dashboardError && (
+          <div className="px-6 pt-6">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">{dashboardError}</div>
+          </div>
+        )}
         {/* Sign-out confirmation overlay */}
         {showLandlordSignOutConfirm && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
@@ -336,7 +705,7 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
               <p className="text-sm text-gray-500 text-center mb-6">Are you sure about removing this listing? All applicants will be notified and this cannot be undone.</p>
               <div className="flex gap-3">
                 <button onClick={() => setShowRemoveListingConfirm(false)} className="flex-1 border border-gray-200 text-gray-600 text-sm font-semibold py-2.5 rounded-xl hover:bg-gray-50 transition-colors">Cancel</button>
-                <button onClick={() => { setShowRemoveListingConfirm(false); setPage('listings') }} className="flex-1 bg-red-600 text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-red-700 transition-colors">Remove Listing</button>
+                <button onClick={() => { void handleRemoveListing(editListingId); }} className="flex-1 bg-red-600 text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-red-700 transition-colors">Remove Listing</button>
               </div>
             </div>
           </div>
@@ -383,6 +752,8 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
               mReqs={mReqs}
               pendingRequests={pendingRequests}
               requests={requests}
+              activeTenants={activeTenantCount}
+              monthlyRevenue={monthlyRevenue}
               setPage={setPage}
               openLandlordListing={openLandlordListing}
             />
@@ -404,6 +775,16 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
               listing={landlordView}
               onBack={() => setPage('listings')}
               backLabel="← Back to My Listings"
+              currentTenants={leases
+                .filter((lease) => lease.status === 'active' && (
+                  lease.propertyId === String(landlordView.propertyId || landlordView.id) ||
+                  lease.propertyCode === String(landlordView.propertyId || landlordView.id) ||
+                  lease.propertyTitle === landlordView.title
+                ))
+                .map((lease) => ({
+                  name: lease.studentName || (lease.studentId ? `Student ${lease.studentId}` : 'Current tenant'),
+                  studentId: lease.studentId,
+                }))}
               actions={
                 <button onClick={() => { openEdit(landlordView.id); setPage('edit-listing') }} className="w-full bg-[#111827] text-white text-sm font-semibold py-3 rounded-xl hover:bg-[#1f2937] transition-colors">
                   Edit this listing
@@ -437,6 +818,7 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
               setShowDiscardAddConfirm={setShowDiscardAddConfirm}
               setPage={setPage}
               onPin={handleMapPin}
+              onSubmit={handleAddListing}
             />
           )}
 
@@ -468,6 +850,7 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
               setShowDiscardEditConfirm={setShowDiscardEditConfirm}
               setShowRemoveListingConfirm={setShowRemoveListingConfirm}
               setPage={setPage}
+              onSubmit={handleUpdateListing}
             />
           )}
 
@@ -484,7 +867,7 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
 
           {/* ── Rent Tracker ── */}
           {page === 'rent' && (
-            <RentPage rentTransactions={rentTransactions} />
+            <RentPage rentTransactions={liveLeaseTransactions} />
           )}
 
           {/* ── Maintenance ── */}
@@ -492,7 +875,10 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
             <MaintenancePage
               mReqs={mReqs}
               expandedMaintId={expandedMaintId}
-              setExpandedMaintId={setExpandedMaintId}
+              setExpandedMaintId={(id) => {
+                setExpandedMaintId(id)
+                if (id !== null) loadLandlordMaintComments(id)
+              }}
               advanceStage={advanceStage}
               revertStage={revertStage}
               addComment={addComment}
@@ -519,8 +905,11 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
           {page === 'settings' && (
             <SettingsPage
               userName={userName}
+              profile={landlordProfile}
+              onSaveProfile={handleUpdateLandlordProfile}
               myListingsCount={myListings.length}
               landlordComplaints={landlordComplaints}
+              complaintTargets={complaintTargets}
               showLandlordComplaintForm={showLandlordComplaintForm}
               setShowLandlordComplaintForm={setShowLandlordComplaintForm}
               lcForm={lcForm}

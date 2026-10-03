@@ -1,9 +1,15 @@
+import { useRef, useState } from 'react'
 import type { LandlordComplaint } from './types'
+import type { LandlordProfile } from '../../lib/landlordApi'
+import { changePassword } from '../../lib/api'
 
 type SettingsPageProps = {
   userName: string
+  profile?: LandlordProfile | null
+  onSaveProfile?: (data: { name?: string; phone?: string; companyName?: string }) => Promise<boolean>
   myListingsCount: number
   landlordComplaints: LandlordComplaint[]
+  complaintTargets: Array<{ studentName: string; propertyTitle: string }>
   showLandlordComplaintForm: boolean
   setShowLandlordComplaintForm: (value: boolean) => void
   lcForm: { against: string; property: string; category: string; subject: string; description: string }
@@ -12,7 +18,70 @@ type SettingsPageProps = {
   setShowLandlordDeactivateConfirm: (value: boolean) => void
 }
 
-export default function SettingsPage({ userName, myListingsCount, landlordComplaints, showLandlordComplaintForm, setShowLandlordComplaintForm, lcForm, setLcForm, submitLandlordComplaint, setShowLandlordDeactivateConfirm }: SettingsPageProps) {
+export default function SettingsPage({ userName, profile, onSaveProfile, myListingsCount, landlordComplaints, complaintTargets, showLandlordComplaintForm, setShowLandlordComplaintForm, lcForm, setLcForm, submitLandlordComplaint, setShowLandlordDeactivateConfirm }: SettingsPageProps) {
+  const nameRef = useRef<HTMLInputElement>(null)
+  const phoneRef = useRef<HTMLInputElement>(null)
+  const companyRef = useRef<HTMLInputElement>(null)
+  const [saving, setSaving] = useState(false)
+  const [saveSuccess, setSaveSuccess] = useState(false)
+
+  const [currentPw, setCurrentPw] = useState('')
+  const [newPw, setNewPw] = useState('')
+  const [confirmPw, setConfirmPw] = useState('')
+  const [pwLoading, setPwLoading] = useState(false)
+  const [pwError, setPwError] = useState('')
+  const [pwSuccess, setPwSuccess] = useState('')
+  const complaintPropertyOptions = lcForm.against
+    ? complaintTargets
+        .filter((target) => target.studentName === lcForm.against)
+        .map((target) => target.propertyTitle)
+    : complaintTargets.map((target) => target.propertyTitle)
+
+  const handlePasswordChange = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    setPwError('')
+    setPwSuccess('')
+
+    if (!currentPw) {
+      setPwError('Please enter your current password.')
+      return
+    }
+    if (!newPw || newPw.length < 8) {
+      setPwError('New password must be at least 8 characters long.')
+      return
+    }
+    if (newPw !== confirmPw) {
+      setPwError('New passwords do not match.')
+      return
+    }
+
+    setPwLoading(true)
+    try {
+      await changePassword(currentPw, newPw)
+      setPwSuccess('Password updated successfully!')
+      setCurrentPw('')
+      setNewPw('')
+      setConfirmPw('')
+    } catch (err) {
+      setPwError(err instanceof Error ? err.message : 'Failed to update password.')
+    } finally {
+      setPwLoading(false)
+    }
+  }
+
+  const handleSave = async () => {
+    if (!onSaveProfile) return
+    setSaving(true)
+    setSaveSuccess(false)
+    const ok = await onSaveProfile({
+      name: nameRef.current?.value || undefined,
+      phone: phoneRef.current?.value || undefined,
+      companyName: companyRef.current?.value || undefined,
+    })
+    setSaving(false)
+    if (ok) setSaveSuccess(true)
+  }
+
   return (
     <>
       <div>
@@ -32,19 +101,27 @@ export default function SettingsPage({ userName, myListingsCount, landlordCompla
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              {[
-                { label: 'Full Name', value: userName, placeholder: 'Your full name' },
-                { label: 'Email Address', value: 'landlord@gmail.com', placeholder: 'your@email.com' },
-                { label: 'Phone Number', value: '+880 1712-345678', placeholder: '+880...' },
-                { label: 'National ID / TIN', value: '19881234567890', placeholder: 'ID number' },
-              ].map(field => (
-                <div key={field.label}>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">{field.label}</label>
-                  <input defaultValue={field.value} placeholder={field.placeholder} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#111827]" />
-                </div>
-              ))}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Full Name</label>
+                <input ref={nameRef} defaultValue={profile?.name ?? userName} placeholder="Your full name" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#111827]" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Email Address</label>
+                <input defaultValue={profile?.email ?? 'landlord@gmail.com'} placeholder="your@email.com" disabled className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 text-gray-400 cursor-not-allowed" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Phone Number</label>
+                <input ref={phoneRef} defaultValue={profile?.phone ?? ''} placeholder="+880..." className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#111827]" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Company / Agency Name</label>
+                <input ref={companyRef} defaultValue={profile?.companyName ?? ''} placeholder="Company name" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#111827]" />
+              </div>
             </div>
-            <button className="bg-[#111827] text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-[#1f2937] transition-colors">Save Changes</button>
+            <div className="flex items-center gap-3">
+              <button onClick={handleSave} disabled={saving} className="bg-[#111827] text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-[#1f2937] transition-colors disabled:opacity-60">{saving ? 'Saving…' : 'Save Changes'}</button>
+              {saveSuccess && <span className="text-sm text-emerald-600 font-medium">Profile updated ✓</span>}
+            </div>
           </div>
 
           <div className="bg-white rounded-2xl shadow-sm p-6 space-y-4">
@@ -73,13 +150,60 @@ export default function SettingsPage({ userName, myListingsCount, landlordCompla
 
           <div className="bg-white rounded-2xl shadow-sm p-6 space-y-4">
             <div className="font-semibold text-[#111827]">Change Password</div>
-            {['Current Password', 'New Password', 'Confirm New Password'].map(label => (
-              <div key={label}>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">{label}</label>
-                <input type="password" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#111827]" placeholder="••••••••" />
+
+            {pwError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-3.5 py-2.5 rounded-xl">
+                {pwError}
               </div>
-            ))}
-            <button className="border border-gray-200 text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-gray-50 transition-colors text-[#111827]">Update Password</button>
+            )}
+            {pwSuccess && (
+              <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs px-3.5 py-2.5 rounded-xl">
+                {pwSuccess}
+              </div>
+            )}
+
+            <form onSubmit={handlePasswordChange} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Current Password</label>
+                <input
+                  type="password"
+                  value={currentPw}
+                  onChange={e => setCurrentPw(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#111827]"
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">New Password</label>
+                <input
+                  type="password"
+                  value={newPw}
+                  onChange={e => setNewPw(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#111827]"
+                  placeholder="Minimum 8 characters"
+                  autoComplete="new-password"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Confirm New Password</label>
+                <input
+                  type="password"
+                  value={confirmPw}
+                  onChange={e => setConfirmPw(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#111827]"
+                  placeholder="Re-enter new password"
+                  autoComplete="new-password"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={pwLoading}
+                className="border border-gray-200 text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-gray-50 transition-colors text-[#111827] disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {pwLoading ? 'Updating…' : 'Update Password'}
+              </button>
+            </form>
           </div>
         </div>
 
@@ -131,11 +255,34 @@ export default function SettingsPage({ userName, myListingsCount, landlordCompla
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1">Student</label>
-                    <input value={lcForm.against} onChange={e => setLcForm({ ...lcForm, against: e.target.value })} placeholder="Student name" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#1a1a18]" />
+                    <select
+                      value={lcForm.against}
+                      onChange={e => setLcForm({
+                        ...lcForm,
+                        against: e.target.value,
+                        property: complaintTargets.find((target) => target.studentName === e.target.value)?.propertyTitle ?? '',
+                      })}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#1a1a18] bg-white"
+                    >
+                      <option value="">Select tenant</option>
+                      {complaintTargets.map((target) => (
+                        <option key={`${target.studentName}-${target.propertyTitle}`} value={target.studentName}>{target.studentName}</option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1">Related Property</label>
-                    <input value={lcForm.property} onChange={e => setLcForm({ ...lcForm, property: e.target.value })} placeholder="Property name" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#1a1a18]" />
+                    <select
+                      value={lcForm.property}
+                      onChange={e => setLcForm({ ...lcForm, property: e.target.value })}
+                      disabled={!lcForm.against || complaintPropertyOptions.length === 0}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#1a1a18] bg-white disabled:bg-gray-100 disabled:text-gray-400"
+                    >
+                      <option value="">{lcForm.against ? 'Select property' : 'Choose tenant first'}</option>
+                      {complaintPropertyOptions.map((propertyTitle) => (
+                        <option key={propertyTitle} value={propertyTitle}>{propertyTitle}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">

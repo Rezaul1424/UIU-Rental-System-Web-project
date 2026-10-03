@@ -1,5 +1,28 @@
 import type { StudentPage } from '../types'
 
+type LeaseInfo = {
+  id?: string
+  propertyId: string
+  propertyTitle?: string
+  propertyCode?: string
+  landlordId?: string
+  landlordName?: string
+  status: string
+  monthlyRent?: number
+  startDate?: string
+  endDate?: string
+}
+
+type RentItem = {
+  id: string
+  leaseId: string
+  month: string
+  amount: number
+  dueDate: string
+  status: string
+  paid: boolean
+}
+
 type PayRentPageProps = {
   payStep: 'form' | 'success'
   payMethod: 'card' | 'mobile' | 'bank'
@@ -9,20 +32,48 @@ type PayRentPageProps = {
   submitPayment: () => void
   setPage: (page: StudentPage) => void
   setPayStep: (value: 'form' | 'success') => void
+  leases?: LeaseInfo[]
+  rentSummary?: RentItem[]
 }
 
-export default function PayRentPage({ payStep, payMethod, setPayMethod, payForm, setPayForm, submitPayment, setPage, setPayStep }: PayRentPageProps) {
+export default function PayRentPage({
+  payStep,
+  payMethod,
+  setPayMethod,
+  payForm,
+  setPayForm,
+  submitPayment,
+  setPage,
+  setPayStep,
+  leases = [],
+  rentSummary = [],
+}: PayRentPageProps) {
+  const activeLease = leases.find((l) => l.status === 'active') ?? leases[0]
+  const pendingRent = rentSummary.find((r) => !r.paid) ?? rentSummary[0]
+
+  const propertyName = activeLease?.propertyTitle || (activeLease?.propertyCode ? activeLease.propertyCode : (activeLease ? `Property ${activeLease.propertyId}` : 'My Rental Unit'))
+  const rentAmount = pendingRent?.amount ?? activeLease?.monthlyRent ?? 4200
+  const rentMonth = pendingRent?.month ?? new Date().toLocaleString('default', { month: 'long', year: 'numeric' })
+  const dueDate = pendingRent?.dueDate
+    ? new Date(pendingRent.dueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+    : '1st of next month'
+
   return (
     <>
       <div>
         <h1 className="text-2xl font-bold text-[#111827]">Pay Rent</h1>
         <p className="text-sm text-gray-500 mt-0.5">Monthly rent payment for your current property</p>
       </div>
-      {payStep === 'success' ? (
+
+      {!activeLease ? (
+        <div className="bg-white border border-gray-200 rounded-xl p-8 text-center text-sm text-gray-500">
+          No active lease found. Once your rental application is approved, your lease and monthly rent dues will appear here.
+        </div>
+      ) : payStep === 'success' ? (
         <div className="bg-white border border-gray-200 rounded-xl p-12 text-center shadow-sm">
           <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">✓</div>
           <div className="text-xl font-bold text-[#1a1a18] mb-1">Payment Successful</div>
-          <div className="text-sm text-gray-500 mb-4">৳4,200 paid for July 2026 · Studio near Gate 3</div>
+          <div className="text-sm text-gray-500 mb-4">৳{rentAmount.toLocaleString()} paid for {rentMonth} · {propertyName}</div>
           <div className="flex gap-3 justify-center">
             <button onClick={() => setPage('receipts')} className="text-sm bg-[#1a1a18] text-white px-5 py-2 rounded-xl hover:bg-[#333] transition-colors font-medium">View Receipt</button>
             <button onClick={() => setPayStep('form')} className="text-sm border border-gray-200 text-gray-500 px-5 py-2 rounded-xl hover:bg-gray-50 transition-colors">Done</button>
@@ -35,10 +86,10 @@ export default function PayRentPage({ payStep, payMethod, setPayMethod, payForm,
               <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Payment Summary</div>
               <div className="space-y-2">
                 {[
-                  ['Property', 'Studio near Gate 3'],
-                  ['Month', 'July 2026'],
-                  ['Due Date', '1 Aug 2026'],
-                  ['Amount', '৳4,200'],
+                  ['Property', propertyName],
+                  ['Month', rentMonth],
+                  ['Due Date', dueDate],
+                  ['Amount', `৳${rentAmount.toLocaleString()}`],
                 ].map(([k, v]) => (
                   <div key={k} className="flex justify-between text-sm pb-2 border-b border-gray-100 last:border-0">
                     <span className="text-gray-500">{k}</span>
@@ -47,7 +98,7 @@ export default function PayRentPage({ payStep, payMethod, setPayMethod, payForm,
                 ))}
                 <div className="flex justify-between text-base font-bold pt-1">
                   <span>Total</span>
-                  <span className="font-mono text-[#1a1a18]">৳4,200</span>
+                  <span className="font-mono text-[#1a1a18]">৳{rentAmount.toLocaleString()}</span>
                 </div>
               </div>
             </div>
@@ -55,11 +106,11 @@ export default function PayRentPage({ payStep, payMethod, setPayMethod, payForm,
               <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Lease Info</div>
               <div className="space-y-2">
                 {[
-                  ['Property', 'Studio near Gate 3'],
-                  ['Landlord', 'Rahman Faruk'],
-                  ['Monthly Rent', '৳4,200'],
-                  ['Next Due', '1 Aug 2026'],
-                  ['Lease Status', 'Active'],
+                  ['Property', propertyName],
+                  ['Landlord', activeLease.landlordName || 'Property Landlord'],
+                  ['Monthly Rent', `৳${(activeLease.monthlyRent ?? rentAmount).toLocaleString()}`],
+                  ['Next Due', dueDate],
+                  ['Lease Status', activeLease.status === 'active' ? 'Active' : activeLease.status],
                 ].map(([k, v]) => (
                   <div key={k} className="flex justify-between text-sm pb-2 border-b border-gray-100 last:border-0">
                     <span className="text-gray-500">{k}</span>
@@ -135,7 +186,7 @@ export default function PayRentPage({ payStep, payMethod, setPayMethod, payForm,
             {payMethod !== 'bank' && (
               <>
                 <div className="flex gap-2 text-xs text-gray-500 items-center"><span>🔒</span><span>Payments are processed securely</span></div>
-                <button onClick={submitPayment} className="w-full bg-[#111827] text-white text-sm font-semibold py-3 rounded-xl hover:bg-[#1f2937] transition-colors shadow-sm">Pay ৳4,200</button>
+                <button onClick={submitPayment} className="w-full bg-[#111827] text-white text-sm font-semibold py-3 rounded-xl hover:bg-[#1f2937] transition-colors shadow-sm">Pay ৳{rentAmount.toLocaleString()}</button>
               </>
             )}
           </div>
