@@ -36,6 +36,14 @@ describe('Module 6 public listings API', () => {
     expect(response.body.meta.hasNextPage).toBe(false);
   });
 
+  it('returns an empty page when filters match no listings', async () => {
+    const response = await request(app).get('/api/v1/listings').query({ maxPrice: 2000 });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toEqual([]);
+    expect(response.body.meta).toMatchObject({ totalItems: 0, totalPages: 0 });
+  });
+
   it('returns one public listing and hides unavailable listings', async () => {
     const detail = await request(app).get('/api/v1/listings/UIU-1001');
     const unavailable = await request(app).get('/api/v1/listings/UIU-1004');

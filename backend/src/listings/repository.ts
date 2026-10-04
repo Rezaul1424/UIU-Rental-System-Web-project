@@ -233,6 +233,10 @@ export async function searchPublicListings(search: ListingSearch) {
   const [countRows] = await db.query<RowDataPacket[]>(`SELECT COUNT(*) AS total FROM properties p WHERE ${where.sql}`, where.params);
   const total = Number(countRows[0]?.total ?? 0);
   const [rows] = await db.query<PropertyRow[]>(`SELECT p.*, u.name AS landlord_name, p.map_pin_x AS latitude, p.map_pin_y AS longitude FROM properties p JOIN users u ON u.id = p.landlord_id WHERE ${where.sql} ORDER BY ${sortColumns[search.sortBy]} ${search.sortDirection.toUpperCase()}, p.id ASC LIMIT ? OFFSET ?`, [...where.params, search.limit, (search.page - 1) * search.limit]);
+  if (rows.length === 0) {
+    return { data: [], meta: pageMeta(search.page, search.limit, total) };
+  }
+
   const [images] = await db.query<ImageRow[]>('SELECT property_id, id, image_url, is_primary FROM property_images WHERE property_id IN (?)', [rows.map((row) => row.id)]);
   const [amenities] = await db.query<AmenityRow[]>('SELECT pa.property_id, a.name FROM property_amenities pa JOIN amenities a ON a.id = pa.amenity_id WHERE pa.property_id IN (?)', [rows.map((row) => row.id)]);
   return { data: rows.map((row) => mapListing(row, images, amenities)), meta: pageMeta(search.page, search.limit, total) };
