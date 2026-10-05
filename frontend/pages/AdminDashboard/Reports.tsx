@@ -1,6 +1,7 @@
 import { Badge, Stat } from '../../components/ui'
 import { BarChartH, DonutChart } from '../../components/Charts'
 import type { AdminReportData } from '../../api/admin'
+import type { jsPDF } from 'jspdf'
 
 type ReportsPageProps = {
   report: AdminReportData | null
@@ -14,14 +15,118 @@ function monthLabel(value: string): string {
   return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString('en', { month: 'short', year: '2-digit', timeZone: 'UTC' })
 }
 
-function downloadReport(report: AdminReportData): void {
-  const content = JSON.stringify(report, null, 2)
-  const url = URL.createObjectURL(new Blob([content], { type: 'application/json' }))
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `uiu-rental-report-${new Date().toISOString().slice(0, 10)}.json`
-  link.click()
-  URL.revokeObjectURL(url)
+async function downloadReport(report: AdminReportData): Promise<void> {
+  const [{ jsPDF }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ])
+  const pdf = new jsPDF({ unit: 'mm', format: 'a4' })
+  const pageWidth = pdf.internal.pageSize.getWidth()
+  const pageHeight = pdf.internal.pageSize.getHeight()
+  const margin = 14
+  const landlords = report.accountStatuses.landlords
+  const students = report.accountStatuses.students
+  const totalUsers = Object.values(landlords).reduce((sum, value) => sum + value, 0)
+    + Object.values(students).reduce((sum, value) => sum + value, 0)
+  const totalListings = Object.values(report.listingStatuses).reduce((sum, value) => sum + value, 0)
+  const currentRent = report.rentCollection.at(-1)
+  let cursorY = 47
+
+  pdf.setProperties({ title: 'UIU Rental System Report', subject: 'Reports and analytics' })
+  pdf.setFillColor(17, 24, 39)
+  pdf.rect(0, 0, pageWidth, 37, 'F')
+  pdf.setTextColor(255, 255, 255)
+  pdf.setFont('helvetica', 'bold')
+  pdf.setFontSize(18)
+  pdf.text('UIU Rental System', margin, 15)
+  pdf.setFontSize(11)
+  pdf.text('Reports & Analytics', margin, 23)
+  pdf.setFont('helvetica', 'normal')
+  pdf.setFontSize(8)
+  pdf.text(`Generated ${new Date(report.generatedAt).toLocaleString('en')}`, margin, 30)
+
+  const addTable = (title: string, headers: string[], rows: (string | number)[][]): void => {
+    if (cursorY > pageHeight - 34) {
+      pdf.addPage()
+      cursorY = 18
+    }
+
+    pdf.setTextColor(17, 24, 39)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(11)
+    pdf.text(title, margin, cursorY)
+    cursorY += 3
+
+    autoTable(pdf, {
+      startY: cursorY,
+      head: [headers],
+      body: rows.length > 0 ? rows : [['No records', ...headers.slice(1).map(() => '')]],
+      margin: { left: margin, right: margin, bottom: 16 },
+      styles: { font: 'helvetica', fontSize: 7.5, cellPadding: 2, overflow: 'linebreak' },
+      headStyles: { fillColor: [17, 24, 39], textColor: 255 },
+      alternateRowStyles: { fillColor: [245, 247, 249] },
+      showHead: 'everyPage',
+    })
+    cursorY = (pdf as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? cursorY
+    cursorY += 9
+  }
+
+  const accountRows = (status: Record<'active' | 'pending' | 'suspended' | 'deactivated', number>) => [
+    status.active,
+    status.pending,
+    status.suspended,
+    status.deactivated,
+  ]
+
+  addTable('Summary', ['Metric', 'Value'], [
+    ['Total users', totalUsers],
+    ['Landlords', Object.values(landlords).reduce((sum, value) => sum + value, 0)],
+    ['Students', Object.values(students).reduce((sum, value) => sum + value, 0)],
+    ['Total listings', totalListings],
+    ['Active leases', report.activeLeases],
+    ['Open complaints', report.openComplaints],
+    ['Maintenance requests', report.maintenanceRequests.length],
+    ['Rent collected in latest period', `BDT ${(currentRent?.collected ?? 0).toLocaleString('en')}`],
+  ])
+  addTable('User Growth', ['Month', 'Students', 'Landlords', 'Total'], report.userGrowth.map(item => [
+    monthLabel(item.month), item.students, item.landlords, item.students + item.landlords,
+  ]))
+  addTable('Rent Collection', ['Month', 'Expected (BDT)', 'Collected (BDT)', 'Pending (BDT)', 'Overdue (BDT)'], report.rentCollection.map(item => [
+    monthLabel(item.month), item.expected.toLocaleString('en'), item.collected.toLocaleString('en'),
+    item.pending.toLocaleString('en'), item.overdue.toLocaleString('en'),
+  ]))
+  addTable('Listing Activity', ['Month', 'New listings'], report.listingActivity.map(item => [monthLabel(item.month), item.newListings]))
+  addTable('Listing Status', ['Status', 'Listings'], [
+    ['Available', report.listingStatuses.available],
+    ['Occupied', report.listingStatuses.occupied],
+    ['Maintenance', report.listingStatuses.maintenance],
+  ])
+  addTable('Listings by Property Type', ['Type', 'Listings'], report.listingTypes.map(item => [item.type, item.count]))
+  addTable('Account Status', ['Role', 'Active', 'Pending', 'Suspended', 'Deactivated'], [
+    ['Landlords', ...accountRows(landlords)],
+    ['Students', ...accountRows(students)],
+  ])
+  addTable('Maintenance by Month', ['Month', 'Open', 'In progress', 'Resolved'], report.maintenanceByMonth.map(item => [
+    monthLabel(item.month), item.open, item.inProgress, item.resolved,
+  ]))
+  addTable('Recent Activity', ['Date', 'Type', 'Details'], report.recentActivity.map(item => [
+    new Date(item.createdAt).toLocaleDateString('en'), item.type, item.text,
+  ]))
+  addTable('Maintenance Requests', ['ID', 'Date', 'Issue', 'Property', 'Tenant', 'Status'], report.maintenanceRequests.map(item => [
+    item.id, new Date(item.createdAt).toLocaleDateString('en'), item.issue, item.property, item.tenant, item.status,
+  ]))
+
+  const pageCount = pdf.getNumberOfPages()
+  for (let page = 1; page <= pageCount; page += 1) {
+    pdf.setPage(page)
+    pdf.setTextColor(120, 120, 120)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(8)
+    pdf.text('UIU Rental System - Confidential', margin, pageHeight - 8)
+    pdf.text(`Page ${page} of ${pageCount}`, pageWidth - margin, pageHeight - 8, { align: 'right' })
+  }
+
+  pdf.save(`uiu-rental-report-${new Date().toISOString().slice(0, 10)}.pdf`)
 }
 
 const formatMoney = (value: number) => `৳${value.toLocaleString()}`
@@ -56,7 +161,7 @@ export default function ReportsPage({ report, isLoading, error, onRetry }: Repor
           <h1 className="text-2xl font-bold text-[#111827]">Reports &amp; Analytics</h1>
           <p className="text-sm text-gray-500 mt-0.5">Platform metrics from your database · refreshed {new Date(report.generatedAt).toLocaleString()}</p>
         </div>
-        <button onClick={() => downloadReport(report)} className="text-xs bg-white border border-gray-200 text-[#111827] font-semibold px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors shadow-sm">⬇ Download report JSON</button>
+        <button onClick={() => void downloadReport(report)} className="text-xs bg-white border border-gray-200 text-[#111827] font-semibold px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors shadow-sm">⬇ Download report PDF</button>
       </div>
       {error && <div role="alert" className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">Could not refresh reports: {error}</div>}
       {isLoading && <div role="status" className="text-xs text-gray-400">Refreshing report data…</div>}
