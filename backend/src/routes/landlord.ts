@@ -5,12 +5,30 @@ import { requireAuth, requireRole } from '../security/authorization.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApplicationReviewPayloadSchema, LandlordListingPayloadSchema, MaintenanceUpdatePayloadSchema, LandlordProfileSchema } from '../contracts/landlord.js';
 import { landlordService } from '../landlord/service.js';
+import { listChatConversations, sendLandlordChatMessage } from '../chat/repository.js';
 
 const router = Router();
 
 const listingUpdateSchema = LandlordListingPayloadSchema.partial();
 
 router.use(requireAuth, requireRole('landlord'));
+
+router.get('/chat', asyncHandler(async (req, res) => {
+  const currentUser = req.user;
+  if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+  res.json({ data: await listChatConversations('landlord', currentUser.id) });
+}));
+
+router.post('/chat', asyncHandler(async (req, res) => {
+  const currentUser = req.user;
+  if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+  const payload = z.object({
+    studentId: z.string().trim().min(1),
+    propertyId: z.string().trim().min(1).max(30),
+    message: z.string().trim().min(1).max(2000),
+  }).parse(req.body);
+  res.status(201).json({ data: await sendLandlordChatMessage(currentUser.id, payload.studentId, payload.propertyId, payload.message) });
+}));
 
 router.get('/profile', asyncHandler(async (req, res) => {
   const currentUser = req.user;

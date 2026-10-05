@@ -57,6 +57,21 @@ export const getProfile = () => api.get<LandlordProfile>('/api/v1/landlord/profi
 export const updateProfile = (payload: { name?: string; phone?: string; companyName?: string }) =>
   api.patch<LandlordProfile>('/api/v1/landlord/profile', payload);
 
+export type LandlordChatConversation = {
+  id: string;
+  studentId: string;
+  studentName: string;
+  landlordId: string;
+  landlordName: string;
+  propertyId: string;
+  propertyTitle: string;
+  messages: Array<{ id: string; from: 'student' | 'landlord'; text: string; createdAt: string }>;
+};
+
+export const getLandlordChat = () => api.get<LandlordChatConversation[]>('/api/v1/landlord/chat');
+export const sendLandlordChat = (studentId: string, propertyId: string, message: string) =>
+  api.post<LandlordChatConversation>('/api/v1/landlord/chat', { studentId, propertyId, message });
+
 export const getMyListings = async (): Promise<Listing[]> => {
   const payload = await api.get<Array<any>>('/api/v1/landlord/listings');
   if (!Array.isArray(payload)) return [];

@@ -40,6 +40,21 @@ export const getProfile = () => api.get<StudentProfile>('/api/v1/student/profile
 export const updateProfile = (payload: { name?: string; phone?: string; studentId?: string }) =>
   api.patch<StudentProfile>('/api/v1/student/profile', payload);
 
+export type StudentChatConversation = {
+  id: string;
+  studentId: string;
+  studentName: string;
+  landlordId: string;
+  landlordName: string;
+  propertyId: string;
+  propertyTitle: string;
+  messages: Array<{ id: string; from: 'student' | 'landlord'; text: string; createdAt: string }>;
+};
+
+export const getStudentChat = () => api.get<StudentChatConversation[]>('/api/v1/student/chat');
+export const sendStudentChat = (propertyId: string, message: string) =>
+  api.post<StudentChatConversation>('/api/v1/student/chat', { propertyId, message });
+
 export const getFavorites = async (): Promise<number[]> => {
   const payload = await api.get<Array<any> | { data?: Array<any> }>('/api/v1/student/favorites');
   const favorites = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];

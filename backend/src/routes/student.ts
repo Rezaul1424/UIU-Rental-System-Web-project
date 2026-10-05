@@ -9,6 +9,7 @@ import {
   StudentProfileSchema,
 } from '../contracts/student.js';
 import { studentService } from '../student/service.js';
+import { listChatConversations, sendStudentChatMessage } from '../chat/repository.js';
 
 const router = Router();
 
@@ -36,6 +37,22 @@ const maintenancePayloadSchema = StudentMaintenanceRequestSchema.omit({
 });
 
 router.use(requireAuth, requireRole('student'));
+
+router.get('/chat', asyncHandler(async (req, res) => {
+  const currentUser = req.user;
+  if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+  res.json({ data: await listChatConversations('student', currentUser.id) });
+}));
+
+router.post('/chat', asyncHandler(async (req, res) => {
+  const currentUser = req.user;
+  if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+  const payload = z.object({
+    propertyId: z.string().trim().min(1).max(30),
+    message: z.string().trim().min(1).max(2000),
+  }).parse(req.body);
+  res.status(201).json({ data: await sendStudentChatMessage(currentUser.id, payload.propertyId, payload.message) });
+}));
 
 router.get('/profile', asyncHandler(async (req, res) => {
   const currentUser = req.user;

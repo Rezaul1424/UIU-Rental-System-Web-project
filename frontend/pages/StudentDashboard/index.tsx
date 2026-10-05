@@ -3,7 +3,7 @@ import type { Listing } from '../../types'
 import { listings } from '../../data'
 import { Badge } from '../../components/ui'
 import NotificationBell from '../../components/NotificationBell'
-import { addFavorite, addMaintenanceComment, cancelApplication as cancelStudentApplication, fetchPublicListings, getApplications, getFavorites, getLeases, getMaintenanceComments, getMaintenanceRequests, getProfile, getReceipts, getRentSummary, getStudentComplaints, getStudentReviews, payRent, removeFavorite, submitApplication as submitStudentApplication, submitMaintenanceRequest, submitStudentComplaint, submitStudentReview, updateProfile as updateStudentProfile, type StudentApplication } from '../../lib/studentApi'
+import { addFavorite, addMaintenanceComment, cancelApplication as cancelStudentApplication, fetchPublicListings, getApplications, getFavorites, getLeases, getMaintenanceComments, getMaintenanceRequests, getProfile, getReceipts, getRentSummary, getStudentChat, getStudentComplaints, getStudentReviews, payRent, removeFavorite, sendStudentChat, submitApplication as submitStudentApplication, submitMaintenanceRequest, submitStudentComplaint, submitStudentReview, updateProfile as updateStudentProfile, type StudentApplication } from '../../lib/studentApi'
 import { studentNotifs } from './constants'
 import StudentSidebarNav from './Sidebar'
 import OverviewPage from './pages/OverviewPage'
@@ -460,21 +460,12 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
   // ── Chat ─────────────────────────────────────────────────────────────────────
   // All landlords from listings are available to chat with
   const allLandlords = useMemo(
-    () => Array.from(new Map(listings.map((listing) => [listing.landlord, listing])).values()),
-    [],
+    () => Array.from(new Map(allListings.map((listing) => [listing.landlord, listing])).values()),
+    [allListings],
   )
 
   const [activeChatLandlord, setActiveChatLandlord] = useState<string>(allLandlords[0]?.landlord ?? 'Rahman Faruk')
-  const [chatThreads, setChatThreads] = useState<Record<string, ChatMsg[]>>(() => ({
-    'Rahman Faruk': [
-      { from: 'landlord', text: 'Hello! How can I help you today?' },
-      { from: 'student', text: 'I wanted to ask about the parking availability.' },
-      { from: 'landlord', text: 'Yes, we have one parking spot included with your unit.' },
-    ],
-    ...(allLandlords[0] && allLandlords[0].landlord !== 'Rahman Faruk'
-      ? { [allLandlords[0].landlord]: [{ from: 'landlord', text: `Hello! I can help with ${allLandlords[0].title}.` }] }
-      : {}),
-  }))
+  const [chatThreads, setChatThreads] = useState<Record<string, ChatMsg[]>>({})
 
   useEffect(() => {
     if (!allLandlords.some((listing) => listing.landlord === activeChatLandlord) && allLandlords[0]) {
@@ -483,27 +474,60 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
   }, [activeChatLandlord, allLandlords])
   const [chatInput, setChatInput] = useState('')
 
-  const openChatWith = (landlordName: string) => {
-    if (!chatThreads[landlordName]) {
-      setChatThreads(t => ({ ...t, [landlordName]: [] }))
+  useEffect(() => {
+    if (page !== 'chat') return
+    let active = true
+    const loadChat = async () => {
+      try {
+        const conversations = await getStudentChat()
+        if (!active) return
+        const threads: Record<string, ChatMsg[]> = {}
+        for (const conversation of [...conversations].reverse()) {
+          threads[conversation.landlordName] = [
+            ...(threads[conversation.landlordName] ?? []),
+            ...conversation.messages.map(({ from, text }) => ({ from, text })),
+          ]
+        }
+        setChatThreads(threads)
+      } catch (error) {
+        if (active) setDashboardError(error instanceof Error ? error.message : 'Unable to load chat messages.')
+      }
     }
+    void loadChat()
+    const timer = window.setInterval(() => { void loadChat() }, 3000)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [page])
+
+  const openChatWith = (landlordName: string) => {
     setActiveChatLandlord(landlordName)
     setPage('chat')
   }
 
-  const sendChat = () => {
-    if (!chatInput.trim()) return
-    const msg: ChatMsg = { from: 'student', text: chatInput }
-    setChatThreads(t => ({ ...t, [activeChatLandlord]: [...(t[activeChatLandlord] ?? []), msg] }))
-    setChatInput('')
+  const sendChat = async () => {
+    const message = chatInput.trim()
+    const propertyId = allLandlords.find((listing) => listing.landlord === activeChatLandlord)?.propertyId
+    if (!message) return
+    if (!propertyId) {
+      setDashboardError('Select a landlord with a linked property before sending a message.')
+      return
+    }
+    try {
+      const conversation = await sendStudentChat(propertyId, message)
+      setChatThreads((threads) => ({
+        ...threads,
+        [conversation.landlordName]: conversation.messages.map(({ from, text }) => ({ from, text })),
+      }))
+      setChatInput('')
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Unable to send your message.')
+    }
   }
 
   const activeMsgs = chatThreads[activeChatLandlord] ?? []
-  const activeLandlordListing = listings.find(l => l.landlord === activeChatLandlord)
+  const activeLandlordListing = allLandlords.find(l => l.landlord === activeChatLandlord)
 
   // ── Additional UI state ──────────────────────────────────────────────────────
   const [payMethod, setPayMethod] = useState<'card'|'mobile'|'bank'>('card')
-  const [chatCategoryTab, setChatCategoryTab] = useState<'current'|'previous'|'potential'>('current')
   const [expandedMaintId, setExpandedMaintId] = useState<number|null>(null)
   const [reviewStep, setReviewStep] = useState(0)
   const [questionAnswers, setQuestionAnswers] = useState<number[]>([0,0,0,0,0])
@@ -858,8 +882,6 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
               setChatInput={setChatInput}
               sendChat={sendChat}
               openChatWith={openChatWith}
-              chatCategoryTab={chatCategoryTab}
-              setChatCategoryTab={setChatCategoryTab}
               activeMsgs={activeMsgs}
               activeLandlordListing={activeLandlordListing}
               setViewListing={setViewListing}

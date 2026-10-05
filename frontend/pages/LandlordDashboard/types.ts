@@ -19,6 +19,8 @@ export type RequestItem = {
   id: number
   student: string
   studentId: string
+  userId?: string
+  propertyId?: string
   dept: string
   phone: string
   moveIn: string
@@ -28,7 +30,7 @@ export type RequestItem = {
   date: string
   status: RequestStatus
 }
-export type TenantContact = { name: string; listing: string; category: 'current' | 'potential' }
+export type TenantContact = { name: string; listing: string; category: 'current' | 'potential'; studentId?: string; propertyId?: string }
 export type ChatMsg = { from: 'landlord' | 'tenant'; text: string }
 export type RentTransaction = { id: number; tenant: string; listing: string; amount: number; month: string; paid: boolean }
 export type LandlordComplaint = {

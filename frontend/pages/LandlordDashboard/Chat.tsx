@@ -64,7 +64,7 @@ export default function ChatPage({ currentTenants, potentialTenants, activeChatN
       <div className="flex-1 flex flex-col bg-[#f8fafc] min-w-0">
         <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-200 bg-white">
           <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${activeTenantMeta?.category === 'current' ? 'bg-[#111827] text-white' : 'bg-gray-200 text-gray-600'}`}>
-            {activeChatName[0]}
+            {(activeChatName || 'T')[0]}
           </div>
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-[#111827]">{activeChatName}</div>
@@ -76,10 +76,6 @@ export default function ChatPage({ currentTenants, potentialTenants, activeChatN
                 {activeTenantMeta.category === 'current' ? 'Current Tenant' : 'Potential Tenant'}
               </span>
             )}
-            <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 bg-emerald-400 rounded-full" />
-              <span className="text-xs text-gray-500">Online</span>
-            </div>
           </div>
         </div>
 
@@ -87,8 +83,8 @@ export default function ChatPage({ currentTenants, potentialTenants, activeChatN
           {activeMsgs.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center text-gray-400 pb-16">
               <div className="text-5xl mb-3">💬</div>
-              <div className="text-base font-medium text-gray-500 mb-1">No messages yet</div>
-              <div className="text-sm">Say hello to {(activeChatName || 'Tenant').split(' ')[0]} to get the conversation started.</div>
+              <div className="text-base font-medium text-gray-500 mb-1">{activeChatName ? 'No messages yet' : 'No conversations yet'}</div>
+              <div className="text-sm">{activeChatName ? `Say hello to ${activeChatName.split(' ')[0]} to get the conversation started.` : 'A student or applicant can start a conversation from their account.'}</div>
             </div>
           ) : (
             activeMsgs.map((msg, index) => (
