@@ -91,7 +91,10 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
           getMaintenanceRequests().catch(() => []),
           fetchPublicListings().catch(() => []),
           getStudentReviews().catch(() => []),
-          getStudentComplaints().catch(() => []),
+          getStudentComplaints().catch((error: unknown) => {
+            if (active) setDashboardError(error instanceof Error ? error.message : 'Could not load complaints.')
+            return []
+          }),
         ])
 
         if (!active) return
@@ -128,15 +131,15 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
             date: r.date || (r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''),
           })))
         }
-        if (Array.isArray(complaintsResult) && complaintsResult.length > 0) {
-          setComplaints(complaintsResult.map((c: { id?: string; accusedName?: string; propertyTitle?: string; category?: string; description?: string; createdAt?: string; status?: string }) => ({
+        if (Array.isArray(complaintsResult)) {
+          setComplaints(complaintsResult.map((c: { id?: string; against?: string; accusedName?: string; property?: string; propertyTitle?: string; category?: string; description?: string; createdAt?: string; date?: string; status?: string }) => ({
             id: c.id ?? `CMP-${Date.now()}`,
-            against: c.accusedName ?? '',
-            property: c.propertyTitle ?? '',
+            against: c.against ?? c.accusedName ?? '',
+            property: c.property ?? c.propertyTitle ?? '',
             category: c.category ?? 'Other',
             subject: c.description?.split(' — ')[0] ?? '',
             description: c.description?.split(' — ').slice(1).join(' — ') ?? c.description ?? '',
-            date: c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '',
+            date: c.date ?? (c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''),
             status: (['Submitted', 'Under Review', 'Responded', 'Resolved', 'Closed'].includes(c.status ?? '') ? c.status : 'Submitted') as 'Submitted' | 'Under Review' | 'Responded' | 'Resolved' | 'Closed',
           })))
         }
@@ -594,9 +597,7 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
   const [deactivateInput, setDeactivateInput] = useState('')
   // Complaints
   type Complaint = { id: string; against: string; property: string; category: string; subject: string; description: string; date: string; status: 'Submitted' | 'Under Review' | 'Responded' | 'Resolved' | 'Closed' }
-  const [complaints, setComplaints] = useState<Complaint[]>([
-    { id: 'CMP-001', against: 'Rahman Faruk', property: 'Studio near Gate 3', category: 'Maintenance Neglect', subject: 'AC repair ignored for 2 weeks', description: 'Reported the AC issue on July 10th but no response received.', date: '22 Jul 2026', status: 'Under Review' },
-  ])
+  const [complaints, setComplaints] = useState<Complaint[]>([])
   const [showComplaintForm, setShowComplaintForm] = useState(false)
   const [cForm, setCForm] = useState({ against: '', property: '', category: 'Maintenance Neglect', subject: '', description: '' })
   const complaintTargets = useMemo(() => {
@@ -627,29 +628,29 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
 
   const submitComplaint = async () => {
     if (!cForm.subject.trim() || !cForm.against.trim() || !cForm.property.trim()) return
-    const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-    setComplaints(prev => [...prev, {
-      id: `CMP-${String(prev.length + 1).padStart(3, '0')}`,
-      against: cForm.against,
-      property: cForm.property,
-      category: cForm.category,
-      subject: cForm.subject,
-      description: cForm.description,
-      date: today,
-      status: 'Submitted',
-    }])
-    setCForm({ against: '', property: '', category: 'Maintenance Neglect', subject: '', description: '' })
-    setShowComplaintForm(false)
+    setDashboardError('')
     try {
-      await submitStudentComplaint({
+      const created = await submitStudentComplaint({
         against: cForm.against,
         property: cForm.property,
         category: cForm.category,
         subject: cForm.subject,
         description: cForm.description,
       })
-    } catch (err) {
-      console.error('Failed to submit complaint to backend:', err)
+      setComplaints(prev => [{
+        id: String(created?.id ?? `CMP-${Date.now()}`),
+        against: cForm.against,
+        property: cForm.property,
+        category: cForm.category,
+        subject: cForm.subject,
+        description: cForm.description,
+        date: created?.date ?? new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+        status: 'Submitted',
+      }, ...prev])
+      setCForm({ against: '', property: '', category: 'Maintenance Neglect', subject: '', description: '' })
+      setShowComplaintForm(false)
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Could not submit complaint.')
     }
   }
   // Maintenance chat (per request) — backed by maintenance_comments API

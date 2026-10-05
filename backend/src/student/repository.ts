@@ -12,6 +12,11 @@ import type {
   StudentRentSummary,
 } from '../contracts/student.js';
 import { findTestListing, testApplications, testLeases } from '../landlord/repository.js';
+import { addAdminComplaintFixture } from '../complaints/admin-repository.js';
+import {
+  addAdminComplaintNotificationFixture,
+  notifyAdminsAboutComplaint,
+} from '../notifications/admin-repository.js';
 
 export const testStudentReviews = new Map<string, any[]>();
 export const testStudentComplaints = new Map<string, any[]>();
@@ -897,6 +902,18 @@ export const studentRepository: StudentRepository = {
       const list = testStudentComplaints.get(studentId) ?? [];
       list.unshift(complaint);
       testStudentComplaints.set(studentId, list);
+      addAdminComplaintFixture({
+        id: complaintId,
+        from: `Student ${studentId}`,
+        fromType: 'Student',
+        against: payload.against || 'Support / Admin',
+        property: payload.property || '—',
+        category: payload.category,
+        createdAt: complaint.createdAt,
+        status: 'Submitted',
+        description: fullDesc,
+      });
+      addAdminComplaintNotificationFixture(complaintId, 'student', payload.category);
       return complaint;
     }
 
@@ -914,11 +931,22 @@ export const studentRepository: StudentRepository = {
       if (propRows[0]?.id) propId = Number(propRows[0].id);
     }
 
-    await db.execute(
-      `INSERT INTO complaints (id, complainant_id, accused_id, property_id, category, description, status)
-       VALUES (?, ?, ?, ?, ?, ?, 'Submitted')`,
-      [complaintId, userId, accusedId, propId, payload.category, fullDesc],
-    );
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+      await connection.execute(
+        `INSERT INTO complaints (id, complainant_id, accused_id, property_id, category, description, status)
+         VALUES (?, ?, ?, ?, ?, ?, 'Submitted')`,
+        [complaintId, userId, accusedId, propId, payload.category, fullDesc],
+      );
+      await notifyAdminsAboutComplaint(connection, complaintId, 'student', payload.category);
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
 
     return {
       id: complaintId,

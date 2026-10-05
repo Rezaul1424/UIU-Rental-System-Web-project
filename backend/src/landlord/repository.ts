@@ -8,6 +8,11 @@ import type {
   LandlordProfile,
   MaintenanceUpdatePayload,
 } from '../contracts/landlord.js';
+import { addAdminComplaintFixture } from '../complaints/admin-repository.js';
+import {
+  addAdminComplaintNotificationFixture,
+  notifyAdminsAboutComplaint,
+} from '../notifications/admin-repository.js';
 
 const db = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
@@ -919,6 +924,18 @@ export const landlordRepository: LandlordRepository = {
       const list = testLandlordComplaints.get(landlordId) ?? [];
       list.unshift(complaint);
       testLandlordComplaints.set(landlordId, list);
+      addAdminComplaintFixture({
+        id: complaintId,
+        from: `Landlord ${landlordId}`,
+        fromType: 'Landlord',
+        against: payload.against || 'Tenant / User',
+        property: payload.property || '—',
+        category: payload.category,
+        createdAt: complaint.createdAt,
+        status: 'Submitted',
+        description: fullDesc,
+      });
+      addAdminComplaintNotificationFixture(complaintId, 'landlord', payload.category);
       return complaint;
     }
 
@@ -937,11 +954,22 @@ export const landlordRepository: LandlordRepository = {
       if (pRows[0]?.id) propId = Number(pRows[0].id);
     }
 
-    await db.execute(
-      `INSERT INTO complaints (id, complainant_id, accused_id, property_id, category, description, status)
-       VALUES (?, ?, ?, ?, ?, ?, 'Submitted')`,
-      [complaintId, userId, accusedId, propId, payload.category, fullDesc],
-    );
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+      await connection.execute(
+        `INSERT INTO complaints (id, complainant_id, accused_id, property_id, category, description, status)
+         VALUES (?, ?, ?, ?, ?, ?, 'Submitted')`,
+        [complaintId, userId, accusedId, propId, payload.category, fullDesc],
+      );
+      await notifyAdminsAboutComplaint(connection, complaintId, 'landlord', payload.category);
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
 
     return {
       id: complaintId,
@@ -1020,4 +1048,3 @@ export function seedFixtureMaintenanceRequest(landlordId: string, requestId: str
     testMaintenanceRequests.set(landlordId, requests);
   }
 }
-

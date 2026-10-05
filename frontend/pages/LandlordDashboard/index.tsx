@@ -142,7 +142,10 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
           getApplications().catch(() => []),
           getLeases().catch(() => []),
           getMaintenanceRequests().catch(() => []),
-          getLandlordComplaints().catch(() => []),
+          getLandlordComplaints().catch((error: unknown) => {
+            if (active) setDashboardError(error instanceof Error ? error.message : 'Could not load complaints.')
+            return []
+          }),
         ])
 
         if (!active) return
@@ -188,11 +191,11 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
             hasPhotos: false,
           })))
         }
-        if (Array.isArray(landComplaintsResult) && landComplaintsResult.length > 0) {
+        if (Array.isArray(landComplaintsResult)) {
           setLandlordComplaints(landComplaintsResult.map((c: any) => ({
             id: c.id ?? `CMP-${Date.now()}`,
-            against: c.accusedName ?? '',
-            property: c.propertyTitle ?? '',
+            against: c.against ?? c.accusedName ?? '',
+            property: c.property ?? c.propertyTitle ?? '',
             category: c.category ?? 'Other',
             subject: c.description?.split(' — ')[0] ?? '',
             description: c.description?.split(' — ').slice(1).join(' — ') ?? c.description ?? '',
@@ -688,30 +691,30 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
   // Landlord complaints submit handler
   const submitLandlordComplaint = async () => {
     if (!lcForm.subject.trim() || !lcForm.against.trim() || !lcForm.property.trim()) return
-    const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-    setLandlordComplaints(prev => [...prev, {
-      id: `CMP-${String(prev.length + 1).padStart(3, '0')}`,
-      against: lcForm.against,
-      property: lcForm.property,
-      category: lcForm.category,
-      subject: lcForm.subject,
-      description: lcForm.description,
-      date: today,
-      status: 'Submitted',
-    }])
     const savedForm = { ...lcForm }
-    setLcForm({ against: '', property: '', category: 'Late Payment', subject: '', description: '' })
-    setShowLandlordComplaintForm(false)
+    setDashboardError('')
     try {
-      await submitLandlordComplaintApi({
+      const created = await submitLandlordComplaintApi({
         against: savedForm.against,
         property: savedForm.property,
         category: savedForm.category,
         subject: savedForm.subject,
         description: savedForm.description,
       })
-    } catch (err) {
-      console.error('Failed to submit landlord complaint to backend:', err)
+      setLandlordComplaints(prev => [{
+        id: String(created?.id ?? `CMP-${Date.now()}`),
+        against: savedForm.against,
+        property: savedForm.property,
+        category: savedForm.category,
+        subject: savedForm.subject,
+        description: savedForm.description,
+        date: created?.date ?? new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+        status: 'Submitted',
+      }, ...prev])
+      setLcForm({ against: '', property: '', category: 'Late Payment', subject: '', description: '' })
+      setShowLandlordComplaintForm(false)
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Could not submit complaint.')
     }
   }
 

@@ -49,6 +49,11 @@ const initialFixtures: AdminComplaint[] = [
 ];
 let fixtures = cloneFixtures();
 
+export function addAdminComplaintFixture(complaint: Omit<AdminComplaint, 'messages'>): void {
+  if (persistentComplaints) return;
+  fixtures.unshift({ ...complaint, messages: [] });
+}
+
 function cloneFixtures(): AdminComplaint[] {
   return initialFixtures.map((item) => ({ ...item, messages: item.messages.map((message) => ({ ...message })) }));
 }

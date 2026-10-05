@@ -202,12 +202,19 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
 
   useEffect(() => {
     let mounted = true
-    fetchAdminNotifications()
-      .then(data => { if (mounted) setNotifications(data) })
-      .catch((error: unknown) => {
-        if (mounted) setAdminError(error instanceof Error ? error.message : 'Could not load notifications.')
-      })
-    return () => { mounted = false }
+    const loadNotifications = () => {
+      fetchAdminNotifications()
+        .then(data => { if (mounted) setNotifications(data) })
+        .catch((error: unknown) => {
+          if (mounted) setAdminError(error instanceof Error ? error.message : 'Could not load notifications.')
+        })
+    }
+    loadNotifications()
+    const interval = window.setInterval(loadNotifications, 30_000)
+    return () => {
+      mounted = false
+      window.clearInterval(interval)
+    }
   }, [])
 
   const markNotificationRead = async (id: number) => {
@@ -245,15 +252,31 @@ export default function AdminDashboard({ userName, onSignOut }: { userName: stri
   useEffect(() => {
     if (page !== 'complaints') return
     let mounted = true
-    setIsLoadingComplaints(true)
-    setComplaintsError('')
-    fetchAdminComplaints()
-      .then(data => { if (mounted) setAdminComplaints(data) })
-      .catch((error: unknown) => {
-        if (mounted) setComplaintsError(error instanceof Error ? error.message : 'Could not load complaints.')
-      })
-      .finally(() => { if (mounted) setIsLoadingComplaints(false) })
-    return () => { mounted = false }
+    let initialLoad = true
+    const loadComplaints = () => {
+      if (initialLoad) setIsLoadingComplaints(true)
+      fetchAdminComplaints()
+        .then(data => {
+          if (!mounted) return
+          setAdminComplaints(data)
+          setComplaintsError('')
+        })
+        .catch((error: unknown) => {
+          if (mounted) setComplaintsError(error instanceof Error ? error.message : 'Could not load complaints.')
+        })
+        .finally(() => {
+          if (mounted && initialLoad) {
+            initialLoad = false
+            setIsLoadingComplaints(false)
+          }
+        })
+    }
+    loadComplaints()
+    const interval = window.setInterval(loadComplaints, 30_000)
+    return () => {
+      mounted = false
+      window.clearInterval(interval)
+    }
   }, [page, complaintsRetry])
 
   useEffect(() => {
