@@ -599,7 +599,7 @@ export const studentRepository: StudentRepository = {
     const userId = Number(studentId);
     if (!Number.isFinite(userId)) return [];
 
-    const [rows] = await db.query<MaintenanceRow[]>(`SELECT m.id, m.property_id, m.student_id, m.landlord_id, m.issue, m.description, m.priority, m.status, m.progress_stage, m.created_at, m.updated_at
+    const [rows] = await db.query<MaintenanceRow[]>(`SELECT m.id, m.property_id, m.student_id, m.landlord_id, m.category, m.issue, m.description, m.priority, m.status, m.progress_stage, m.created_at, m.updated_at
       FROM maintenance_requests m
       WHERE m.student_id = ?
       ORDER BY m.created_at DESC`, [userId]);
@@ -613,6 +613,7 @@ export const studentRepository: StudentRepository = {
       description: row.description ?? undefined,
       priority: row.priority,
       status: row.status,
+      stage: Number(row.progress_stage ?? 0),
       attachments: undefined,
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
