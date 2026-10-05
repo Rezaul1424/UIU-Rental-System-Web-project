@@ -10,6 +10,7 @@ import {
 } from '../contracts/student.js';
 import { studentService } from '../student/service.js';
 import { listChatConversations, sendStudentChatMessage } from '../chat/repository.js';
+import { listUserNotifications, markUserNotificationsRead } from '../notifications/user-repository.js';
 
 const router = Router();
 
@@ -37,6 +38,20 @@ const maintenancePayloadSchema = StudentMaintenanceRequestSchema.omit({
 });
 
 router.use(requireAuth, requireRole('student'));
+
+router.get('/notifications', asyncHandler(async (req, res) => {
+  const currentUser = req.user;
+  if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+  res.json({ data: await listUserNotifications(Number(currentUser.id), 'student') });
+}));
+
+router.patch('/notifications/read', asyncHandler(async (req, res) => {
+  const currentUser = req.user;
+  if (!currentUser) throw new AppError(401, 'UNAUTHENTICATED', 'Authentication required');
+  const body = z.object({ notificationId: z.number().int().positive().optional() }).default({}).parse(req.body);
+  await markUserNotificationsRead(Number(currentUser.id), body.notificationId);
+  res.status(204).send();
+}));
 
 router.get('/chat', asyncHandler(async (req, res) => {
   const currentUser = req.user;

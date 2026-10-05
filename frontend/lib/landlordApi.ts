@@ -57,6 +57,32 @@ export const getProfile = () => api.get<LandlordProfile>('/api/v1/landlord/profi
 export const updateProfile = (payload: { name?: string; phone?: string; companyName?: string }) =>
   api.patch<LandlordProfile>('/api/v1/landlord/profile', payload);
 
+export type LandlordNotification = {
+  id: number;
+  title: string;
+  message: string;
+  type: string;
+  isRead: boolean;
+  createdAt: string;
+};
+
+export const getLandlordNotifications = async (): Promise<LandlordNotification[]> => {
+  const payload = await api.get<Array<any> | { data?: Array<any> }>('/api/v1/landlord/notifications');
+  const notifications = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
+
+  return notifications.map((notification) => ({
+    id: Number(notification.id ?? Date.now()),
+    title: String(notification.title ?? 'Notification'),
+    message: String(notification.message ?? notification.text ?? ''),
+    type: String(notification.type ?? 'general'),
+    isRead: Boolean(notification.isRead ?? notification.read ?? false),
+    createdAt: String(notification.createdAt ?? new Date().toISOString()),
+  }));
+};
+
+export const markLandlordNotificationsRead = (notificationId?: number) =>
+  api.patch('/api/v1/landlord/notifications/read', notificationId === undefined ? undefined : { notificationId });
+
 export type LandlordChatConversation = {
   id: string;
   studentId: string;

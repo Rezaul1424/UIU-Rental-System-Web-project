@@ -1,6 +1,7 @@
 import type { RowDataPacket } from 'mysql2';
 import mysql from 'mysql2/promise';
 import { AppError } from '../errors/AppError.js';
+import { createUserNotification } from '../notifications/user-repository.js';
 
 export type ChatRole = 'student' | 'landlord';
 const db = mysql.createPool({
@@ -119,6 +120,7 @@ export async function sendStudentChatMessage(studentId: string, propertyIdentifi
       testConversations.push(conversation);
     }
     conversation.messages.push({ id: `test-message-${conversation.messages.length + 1}`, from: 'student', text, createdAt: new Date().toISOString() });
+    await createUserNotification(Number(conversation.landlordId), 'landlord', 'New message from student', `${conversation.propertyTitle} · ${text.slice(0, 120)}`, 'chat');
     return { ...conversation, messages: conversation.messages.map((message) => ({ ...message })) };
   }
 
@@ -149,6 +151,11 @@ export async function sendStudentChatMessage(studentId: string, propertyIdentifi
     await connection.execute('UPDATE conversations SET last_message_at = CURRENT_TIMESTAMP WHERE id = ?', [conversationId]);
     await connection.commit();
     committed = true;
+    try {
+      await createUserNotification(Number(property.landlord_id), 'landlord', 'New message from student', `${property.title} · ${text.slice(0, 120)}`, 'chat');
+    } catch {
+      // Notification creation is best effort and should not block the chat send.
+    }
     const savedConversation = (await listChatConversations('student', studentId)).find((item) => item.id === String(conversationId));
     if (!savedConversation) throw new AppError(500, 'CHAT_SAVE_FAILED', 'Message was saved but the conversation could not be reloaded');
     return savedConversation;
@@ -166,6 +173,7 @@ export async function sendLandlordChatMessage(landlordId: string, studentId: str
       item.landlordAuthId === landlordId && item.studentAuthId === studentId && item.propertyId === propertyIdentifier);
     if (!conversation) throw new AppError(404, 'CONVERSATION_NOT_FOUND', 'Start the conversation from the student account first');
     conversation.messages.push({ id: `test-message-${conversation.messages.length + 1}`, from: 'landlord', text, createdAt: new Date().toISOString() });
+    await createUserNotification(Number(studentId), 'student', 'New message from landlord', `${conversation.propertyTitle} · ${text.slice(0, 120)}`, 'chat');
     return { ...conversation, messages: conversation.messages.map((message) => ({ ...message })) };
   }
 
@@ -213,6 +221,11 @@ export async function sendLandlordChatMessage(landlordId: string, studentId: str
     await connection.execute('UPDATE conversations SET last_message_at = CURRENT_TIMESTAMP WHERE id = ?', [conversationId]);
     await connection.commit();
     committed = true;
+    try {
+      await createUserNotification(Number(studentId), 'student', 'New message from landlord', `${property.property_title} · ${text.slice(0, 120)}`, 'chat');
+    } catch {
+      // Notification creation is best effort and should not block the chat send.
+    }
     const savedConversation = (await listChatConversations('landlord', landlordId)).find((item) => item.id === String(conversationId));
     if (!savedConversation) throw new AppError(500, 'CHAT_SAVE_FAILED', 'Message was saved but the conversation could not be reloaded');
     return savedConversation;

@@ -2,8 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { Listing } from '../../types'
 import ListingDetailPage from '../../components/ListingDetail'
 import NotificationBell from '../../components/NotificationBell'
-import { addLandlordMaintenanceComment, createListing, deleteListing, getApplications, getLeases, getLandlordChat, getLandlordComplaints, getLandlordMaintenanceComments, getMaintenanceRequests, getMyListings, getProfile, reviewApplication, sendLandlordChat, submitLandlordComplaint as submitLandlordComplaintApi, updateListing, updateMaintenanceStatus, updateProfile as updateLandlordProfile, type LandlordChatConversation } from '../../lib/landlordApi'
-import { landlordNotifs } from './constants'
+import { addLandlordMaintenanceComment, createListing, deleteListing, getApplications, getLeases, getLandlordChat, getLandlordComplaints, getLandlordMaintenanceComments, getLandlordNotifications, getMaintenanceRequests, getMyListings, getProfile, markLandlordNotificationsRead, reviewApplication, sendLandlordChat, submitLandlordComplaint as submitLandlordComplaintApi, updateListing, updateMaintenanceStatus, updateProfile as updateLandlordProfile, type LandlordChatConversation } from '../../lib/landlordApi'
 import LandlordSidebarNav, { type LandlordPage } from './Sidebar'
 import type { MaintReq, RequestItem, ChatMsg, MaintStage } from './types'
 import OverviewPage from './Overview'
@@ -17,6 +16,24 @@ import ChatPage from './Chat'
 import SettingsPage from './Settings'
 
 export default function LandlordDashboard({ userName, onSignOut }: { userName: string; onSignOut: () => void }) {
+
+  const [landlordNotifications, setLandlordNotifications] = useState<Array<{ id: number; text: string; sub?: string; time: string; read: boolean }>>([])
+
+  const notificationAge = (value: string) => {
+    const minutes = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60_000))
+    if (minutes < 60) return `${minutes} min ago`
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) return `${hours} hr ago`
+    return `${Math.floor(hours / 24)} day${Math.floor(hours / 24) === 1 ? '' : 's'} ago`
+  }
+
+  const mapLandlordNotification = (notification: { id: number; title: string; message: string; isRead: boolean; createdAt: string }) => ({
+    id: notification.id,
+    text: notification.title,
+    sub: notification.message,
+    time: notificationAge(notification.createdAt),
+    read: notification.isRead,
+  })
 
   const [page, setPage] = useState<LandlordPage>('overview')
   const [landlordView, setLandlordView] = useState<Listing | null>(null)
@@ -66,11 +83,50 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
     return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
   }
 
+  const markLandlordNotificationRead = async (id: number) => {
+    setLandlordNotifications(items => items.map(item => item.id === id ? { ...item, read: true } : item))
+    try {
+      await markLandlordNotificationsRead(id)
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Could not mark notification as read.')
+    }
+  }
+
+  const markAllLandlordNotificationsRead = async () => {
+    setLandlordNotifications(items => items.map(item => ({ ...item, read: true })))
+    try {
+      await markLandlordNotificationsRead()
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Could not mark notifications as read.')
+    }
+  }
+
   const mapStageToStatus = (stage: MaintStage): 'open' | 'in-progress' | 'resolved' => {
     if (stage >= 5) return 'resolved'
     if (stage >= 2) return 'in-progress'
     return 'open'
   }
+
+  useEffect(() => {
+    let active = true
+
+    const loadLandlordNotifications = async () => {
+      try {
+        const notifications = await getLandlordNotifications()
+        if (active) {
+          setLandlordNotifications(notifications.map(mapLandlordNotification))
+        }
+      } catch (error) {
+        if (active) {
+          setDashboardError(error instanceof Error ? error.message : 'Could not load notifications.')
+        }
+      }
+    }
+
+    loadLandlordNotifications()
+
+    return () => { active = false }
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -766,7 +822,11 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
         )}
         {/* Notification bell */}
         <div className="flex justify-end px-6 pt-5">
-          <NotificationBell notifications={landlordNotifs} />
+          <NotificationBell
+            notifications={landlordNotifications}
+            onMarkRead={markLandlordNotificationRead}
+            onMarkAllRead={markAllLandlordNotificationsRead}
+          />
         </div>
         <div className="px-6 pb-6 max-w-5xl mx-auto space-y-6">
 

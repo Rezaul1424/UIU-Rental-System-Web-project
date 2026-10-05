@@ -40,6 +40,32 @@ export const getProfile = () => api.get<StudentProfile>('/api/v1/student/profile
 export const updateProfile = (payload: { name?: string; phone?: string; studentId?: string }) =>
   api.patch<StudentProfile>('/api/v1/student/profile', payload);
 
+export type StudentNotification = {
+  id: number;
+  title: string;
+  message: string;
+  type: string;
+  isRead: boolean;
+  createdAt: string;
+};
+
+export const getStudentNotifications = async (): Promise<StudentNotification[]> => {
+  const payload = await api.get<Array<any> | { data?: Array<any> }>('/api/v1/student/notifications');
+  const notifications = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
+
+  return notifications.map((notification) => ({
+    id: Number(notification.id ?? Date.now()),
+    title: String(notification.title ?? 'Notification'),
+    message: String(notification.message ?? notification.text ?? ''),
+    type: String(notification.type ?? 'general'),
+    isRead: Boolean(notification.isRead ?? notification.read ?? false),
+    createdAt: String(notification.createdAt ?? new Date().toISOString()),
+  }));
+};
+
+export const markStudentNotificationsRead = (notificationId?: number) =>
+  api.patch('/api/v1/student/notifications/read', notificationId === undefined ? undefined : { notificationId });
+
 export type StudentChatConversation = {
   id: string;
   studentId: string;

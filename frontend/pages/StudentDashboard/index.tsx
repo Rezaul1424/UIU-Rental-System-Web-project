@@ -3,8 +3,7 @@ import type { Listing } from '../../types'
 import { listings } from '../../data'
 import { Badge } from '../../components/ui'
 import NotificationBell from '../../components/NotificationBell'
-import { addFavorite, addMaintenanceComment, cancelApplication as cancelStudentApplication, fetchPublicListings, getApplications, getFavorites, getLeases, getMaintenanceComments, getMaintenanceRequests, getProfile, getReceipts, getRentSummary, getStudentChat, getStudentComplaints, getStudentReviews, payRent, removeFavorite, sendStudentChat, submitApplication as submitStudentApplication, submitMaintenanceRequest, submitStudentComplaint, submitStudentReview, updateProfile as updateStudentProfile, type StudentApplication } from '../../lib/studentApi'
-import { studentNotifs } from './constants'
+import { addFavorite, addMaintenanceComment, cancelApplication as cancelStudentApplication, fetchPublicListings, getApplications, getFavorites, getLeases, getMaintenanceComments, getMaintenanceRequests, getProfile, getReceipts, getRentSummary, getStudentChat, getStudentComplaints, getStudentNotifications, getStudentReviews, markStudentNotificationsRead, payRent, removeFavorite, sendStudentChat, submitApplication as submitStudentApplication, submitMaintenanceRequest, submitStudentComplaint, submitStudentReview, updateProfile as updateStudentProfile, type StudentApplication } from '../../lib/studentApi'
 import StudentSidebarNav from './Sidebar'
 import OverviewPage from './pages/OverviewPage'
 import BrowsePage from './pages/BrowsePage'
@@ -26,6 +25,24 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
   type Review = { id: number; landlord: string; property: string; listingId: string; landlordStars: number; propStars: number; text: string; date: string }
   type ChatMsg = { from: 'student' | 'landlord'; text: string }
 
+  const [studentNotifications, setStudentNotifications] = useState<Array<{ id: number; text: string; sub?: string; time: string; read: boolean }>>([])
+
+  const notificationAge = (value: string) => {
+    const minutes = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60_000))
+    if (minutes < 60) return `${minutes} min ago`
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) return `${hours} hr ago`
+    return `${Math.floor(hours / 24)} day${Math.floor(hours / 24) === 1 ? '' : 's'} ago`
+  }
+
+  const mapStudentNotification = (notification: { id: number; title: string; message: string; isRead: boolean; createdAt: string }) => ({
+    id: notification.id,
+    text: notification.title,
+    sub: notification.message,
+    time: notificationAge(notification.createdAt),
+    read: notification.isRead,
+  })
+
   const [page, setPage] = useState<StudentPage>('overview')
   const [applyListing, setApplyListing] = useState<Listing | null>(null)
   const [viewListing, setViewListing] = useState<Listing | null>(null)
@@ -34,6 +51,27 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
   const [studentProfile, setStudentProfile] = useState<{ name?: string; email?: string; studentId?: string } | null>(null)
   const openStudentListing = (l: Listing) => { setViewListing(l); setPage('listing-detail') }
   const [allListings, setAllListings] = useState<Listing[]>([])
+
+  useEffect(() => {
+    let active = true
+
+    const loadStudentNotifications = async () => {
+      try {
+        const notifications = await getStudentNotifications()
+        if (active) {
+          setStudentNotifications(notifications.map(mapStudentNotification))
+        }
+      } catch (error) {
+        if (active) {
+          setDashboardError(error instanceof Error ? error.message : 'Could not load notifications.')
+        }
+      }
+    }
+
+    loadStudentNotifications()
+
+    return () => { active = false }
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -113,6 +151,24 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
     loadStudentData()
     return () => { active = false }
   }, [])
+
+  const markStudentNotificationRead = async (id: number) => {
+    setStudentNotifications(items => items.map(item => item.id === id ? { ...item, read: true } : item))
+    try {
+      await markStudentNotificationsRead(id)
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Could not mark notification as read.')
+    }
+  }
+
+  const markAllStudentNotificationsRead = async () => {
+    setStudentNotifications(items => items.map(item => ({ ...item, read: true })))
+    try {
+      await markStudentNotificationsRead()
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Could not mark notifications as read.')
+    }
+  }
 
   // Browse filters
   const [typeFilter, setTypeFilter] = useState<'all' | 'Single' | 'Mess' | 'Shared' | 'Sublet'>('all')
@@ -708,7 +764,11 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
         )}
 
         <div className="flex justify-end px-6 pt-5">
-          <NotificationBell notifications={studentNotifs} />
+          <NotificationBell
+            notifications={studentNotifications}
+            onMarkRead={markStudentNotificationRead}
+            onMarkAllRead={markAllStudentNotificationsRead}
+          />
         </div>
         <div className="px-6 pb-6 max-w-5xl mx-auto space-y-6">
           {page === 'overview' && (
