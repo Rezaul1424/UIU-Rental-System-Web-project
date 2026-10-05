@@ -1,5 +1,6 @@
 import type { Listing } from '../types';
 import { api } from './api';
+import { parseUiuCoordinates } from './geo';
 
 const toListingId = (value: unknown) => {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -328,9 +329,7 @@ export const normalizeBackendListing = (item: any): Listing => {
           url: typeof img === 'string' ? img : (img.url || primaryImg),
         }))
       : undefined,
-    mapPin: item.address?.latitude != null && item.address?.longitude != null
-      ? { x: Number(item.address.latitude), y: Number(item.address.longitude) }
-      : undefined,
+    mapPin: parseUiuCoordinates(item.address?.latitude, item.address?.longitude),
     street: item.address?.line1,
     area: item.address?.area,
   };

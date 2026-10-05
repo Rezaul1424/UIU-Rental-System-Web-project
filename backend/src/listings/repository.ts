@@ -75,7 +75,7 @@ const testListings: Listing[] = [
     currency: 'BDT', status: 'approved', bedrooms: 1, rooms: 3, roomSizesSqFt: [120, 45, 60],
     totalSizeSqFt: 280, roommateCapacity: 1, parkingAvailable: false, facilities: ['AC', 'WiFi', 'Laundry'],
     images: [{ id: '1', url: 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=600&h=380&fit=crop&auto=format', isPrimary: true }],
-    address: { line1: 'Road 4, House 12', area: 'Gate 3 Area, North Campus', city: 'Dhaka', district: 'Dhaka', latitude: 23.8148, longitude: 90.4256 },
+    address: { line1: 'Road 4, House 12', area: 'Gate 3 Area, North Campus', city: 'Dhaka', district: 'Dhaka', latitude: 23.7989, longitude: 90.45255 },
     distanceKm: 0.3, createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z',
   },
   {
@@ -84,7 +84,7 @@ const testListings: Listing[] = [
     currency: 'BDT', status: 'approved', bedrooms: 2, rooms: 4, roomSizesSqFt: [100, 150, 40, 70],
     totalSizeSqFt: 460, roommateCapacity: 4, parkingAvailable: false, facilities: ['Meals', 'WiFi', 'CCTV'],
     images: [{ id: '2', url: 'https://images.unsplash.com/photo-1555854877-bab0e564b8d5?w=600&h=380&fit=crop&auto=format', isPrimary: true }],
-    address: { line1: 'South Avenue, Block B', area: 'Gate 1 Area, South Campus', city: 'Dhaka', district: 'Dhaka', latitude: 23.8125, longitude: 90.4217 },
+    address: { line1: 'South Avenue, Block B', area: 'Gate 1 Area, South Campus', city: 'Dhaka', district: 'Dhaka', latitude: 23.7935, longitude: 90.4496 },
     distanceKm: 0.6, createdAt: '2026-09-02T00:00:00.000Z', updatedAt: '2026-09-02T00:00:00.000Z',
   },
 ];
@@ -189,8 +189,8 @@ function mapListing(row: PropertyRow, images: ImageRow[], amenities: AmenityRow[
       area: row.address_area ?? undefined,
       city: row.address_city,
       district: row.address_area ?? row.address_city,
-      latitude: Number(row.latitude ?? 23.8148),
-      longitude: Number(row.longitude ?? 90.4256),
+      latitude: row.latitude == null ? null : Number(row.latitude),
+      longitude: row.longitude == null ? null : Number(row.longitude),
     },
     distanceKm: Number(row.distance_km),
     createdAt: row.created_at.toISOString(),
@@ -247,7 +247,7 @@ export async function getPublicListing(identifier: string): Promise<Listing | un
     const candidates = getFixtureListings();
     return candidates.find((listing) => listing.id === identifier || (listing as Listing & { propertyCode?: string }).propertyCode === identifier);
   }
-  const [rows] = await db.query<PropertyRow[]>('SELECT p.*, u.name AS landlord_name, a.latitude, a.longitude FROM properties p JOIN users u ON u.id = p.landlord_id LEFT JOIN addresses a ON a.property_id = p.id WHERE p.status = \'available\' AND p.moderation_status = \'approved\' AND (p.property_code = ? OR CAST(p.id AS CHAR) = ?) LIMIT 1', [identifier, identifier]);
+  const [rows] = await db.query<PropertyRow[]>('SELECT p.*, u.name AS landlord_name, p.map_pin_x AS latitude, p.map_pin_y AS longitude FROM properties p JOIN users u ON u.id = p.landlord_id WHERE p.status = \'available\' AND p.moderation_status = \'approved\' AND (p.property_code = ? OR CAST(p.id AS CHAR) = ?) LIMIT 1', [identifier, identifier]);
   const row = rows[0];
   if (!row) return undefined;
   const [images] = await db.query<ImageRow[]>('SELECT property_id, id, image_url, is_primary FROM property_images WHERE property_id = ?', [row.id]);
@@ -277,4 +277,3 @@ export async function getListingReviews(identifier: string): Promise<any[]> {
     createdAt: row.created_at.toISOString(),
   }));
 }
-

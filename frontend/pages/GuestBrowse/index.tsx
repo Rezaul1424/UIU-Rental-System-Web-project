@@ -80,12 +80,6 @@ export default function GuestBrowse({ onModal, initialSearch = {} }: { onModal: 
     )
   }
 
-  // Pin positions on the map for each listing
-  const pinPositions: Record<number, { x: number; y: number }> = {
-    1: { x: 42, y: 38 }, 2: { x: 57, y: 43 }, 3: { x: 65, y: 30 },
-    4: { x: 36, y: 58 }, 5: { x: 72, y: 52 }, 6: { x: 48, y: 62 },
-  }
-
   return (
     <div className="flex h-[calc(100vh-56px)] overflow-hidden bg-gray-50">
 
@@ -281,26 +275,19 @@ export default function GuestBrowse({ onModal, initialSearch = {} }: { onModal: 
           <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">Map View — UIU Area</div>
         </div>
         <div className="flex-1 relative p-3">
-          <div className="w-full h-full rounded-xl overflow-hidden relative" style={{ minHeight: 420 }}>
-            <CampusMap pinX={50} pinY={45} label="UIU" color="#1a1a18" />
-            {/* Overlay listing pins */}
-            {filtered.map(l => {
-              const pin = pinPositions[l.id] ?? { x: 50, y: 50 }
-              return (
-                <div
-                  key={l.id}
-                  onClick={() => setViewListing(l)}
-                  className="absolute cursor-pointer group"
-                  style={{ left: `${pin.x}%`, top: `${pin.y}%`, transform: 'translate(-50%,-100%)' }}
-                >
-                  <div className="bg-white border-2 border-[#1a1a18] rounded-lg px-2 py-0.5 text-[10px] font-bold text-[#1a1a18] whitespace-nowrap shadow-md group-hover:bg-[#1a1a18] group-hover:text-white transition-colors">
-                    ৳{(l.price / 1000).toFixed(1)}k
-                  </div>
-                  <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-[#1a1a18] mx-auto" />
-                </div>
-              )
-            })}
-          </div>
+          <CampusMap
+            height="100%"
+            markers={filtered.flatMap(listing => listing.mapPin ? [{
+              id: listing.id,
+              label: listing.title,
+              description: `৳${listing.price.toLocaleString()}/month · ${listing.distance} from UIU`,
+              ...listing.mapPin,
+            }] : [])}
+            onMarkerClick={id => {
+              const listing = filtered.find(item => item.id === Number(id))
+              if (listing) setViewListing(listing)
+            }}
+          />
         </div>
         <div className="p-4 border-t border-gray-100 bg-gray-50">
           <button onClick={() => onModal('signup')} className="w-full bg-[#111827] text-white text-xs font-semibold py-2.5 rounded-xl hover:bg-[#1f2937] transition-colors">

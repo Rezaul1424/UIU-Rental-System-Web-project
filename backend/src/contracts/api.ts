@@ -65,8 +65,8 @@ export const AddressSchema = z.object({
   area: z.string().min(1).optional(),
   city: z.string().min(1),
   district: z.string().min(1),
-  latitude: z.number().min(-90).max(90),
-  longitude: z.number().min(-180).max(180),
+  latitude: z.number().min(-90).max(90).nullable().optional(),
+  longitude: z.number().min(-180).max(180).nullable().optional(),
 });
 
 export const ListingSchema = z.object({

@@ -13,11 +13,6 @@ export const listingDescriptions: Record<number, string> = {
   6: 'A spacious family flat ideal for married students or those who prefer extra room. The unit spans two bedrooms plus a dining area. Located east of campus with easy road access. Dedicated covered parking, backup generator, and a lift in the building.',
 }
 
-export const listingPins: Record<number, { x: number; y: number }> = {
-  1: { x: 45, y: 44 }, 2: { x: 55, y: 58 }, 3: { x: 62, y: 68 },
-  4: { x: 57, y: 52 }, 5: { x: 46, y: 38 }, 6: { x: 70, y: 56 },
-}
-
 export default function ListingDetailPage({ listing, onBack, backLabel = '← Back', actions, isFavorited, onToggleFavorite, onPropertyIdClick, currentTenants = [] }: {
   listing: Listing
   onBack: () => void
@@ -34,11 +29,6 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
   const [reviewsLoading, setReviewsLoading] = useState(false)
   const [reviewsLoadError, setReviewsLoadError] = useState(false)
 
-  const rawPin = listing.mapPin ?? listingPins[listing.id] ?? { x: 50, y: 50 }
-  const pin = {
-    x: Number.isFinite(Number(rawPin?.x)) ? Number(rawPin.x) : 50,
-    y: Number.isFinite(Number(rawPin?.y)) ? Number(rawPin.y) : 50,
-  }
   const desc = listing.description || listingDescriptions[listing.id] || 'A verified rental property near UIU campus.'
   const fallbackImg = listing.image || 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=600&h=380&fit=crop&auto=format'
   const rawImages = listing.images?.filter(img => img?.url) ?? []
@@ -224,7 +214,7 @@ export default function ListingDetailPage({ listing, onBack, backLabel = '← Ba
           {/* Map */}
           <div className="bg-white rounded-2xl p-5 shadow-sm">
             <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Location relative to UIU</div>
-            <CampusMap pinX={pin.x} pinY={pin.y} label={listing.title} />
+            <CampusMap location={listing.mapPin} label={listing.title} height={240} />
           </div>
         </div>
 

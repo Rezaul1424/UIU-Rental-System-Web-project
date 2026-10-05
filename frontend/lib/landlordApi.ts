@@ -1,5 +1,6 @@
 import type { Listing } from '../types';
 import { api } from './api';
+import { parseUiuCoordinates } from './geo';
 
 const normalizeListingId = (value: unknown) => {
   if (typeof value === 'number') return value;
@@ -35,9 +36,7 @@ const toListing = (item: any): Listing => ({
   totalSize: item.totalSize || 0,
   roommateCapacity: item.roommateCapacity || 1,
   parking: item.parking || 'Not Available',
-  mapPin: item.address?.latitude != null && item.address?.longitude != null
-    ? { x: Number(item.address.latitude), y: Number(item.address.longitude) }
-    : undefined,
+  mapPin: parseUiuCoordinates(item.address?.latitude, item.address?.longitude),
   street: item.address?.line1,
   area: item.address?.area,
 });

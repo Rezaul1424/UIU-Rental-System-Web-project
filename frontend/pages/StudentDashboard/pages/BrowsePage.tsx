@@ -1,5 +1,6 @@
 import type { Listing } from '../../../types'
 import type { StudentPage } from '../types'
+import { CampusMap } from '../../../components/Map'
 
 type BrowsePageProps = {
   filteredListings: Listing[]
@@ -131,47 +132,27 @@ export default function BrowsePage({
           <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">Campus Map</div>
         </div>
         <div className="flex-1 p-4 overflow-y-auto">
-          {(() => {
-            const pinPos: Record<number, { x: number; y: number }> = { 1: { x: 42, y: 38 }, 2: { x: 57, y: 43 }, 3: { x: 65, y: 30 }, 4: { x: 36, y: 58 }, 5: { x: 72, y: 52 }, 6: { x: 48, y: 62 } }
-            return (
-              <>
-                <svg viewBox="0 0 100 100" className="w-full rounded-xl bg-gray-100 border border-gray-200" style={{ minHeight: 220 }}>
-                  <line x1="50" y1="0" x2="50" y2="100" stroke="#c8ddd9" strokeWidth="1.5" />
-                  <line x1="0" y1="50" x2="100" y2="50" stroke="#c8ddd9" strokeWidth="1.5" />
-                  <line x1="25" y1="0" x2="25" y2="100" stroke="#d8e8e5" strokeWidth="0.6" />
-                  <line x1="75" y1="0" x2="75" y2="100" stroke="#d8e8e5" strokeWidth="0.6" />
-                  <line x1="0" y1="25" x2="100" y2="25" stroke="#d8e8e5" strokeWidth="0.6" />
-                  <line x1="0" y1="75" x2="100" y2="75" stroke="#d8e8e5" strokeWidth="0.6" />
-                  <rect x="40" y="40" width="20" height="20" rx="2" fill="#1a1a18" opacity="0.2" />
-                  <text x="50" y="52.5" textAnchor="middle" fontSize="3.5" fill="#1a1a18" fontWeight="bold">UIU</text>
-                  <circle cx="50" cy="50" r="8" fill="none" stroke="#1a1a18" strokeWidth="0.4" strokeDasharray="2 1" opacity="0.5" />
-                  <circle cx="50" cy="50" r="16" fill="none" stroke="#1a1a18" strokeWidth="0.4" strokeDasharray="2 1" opacity="0.35" />
-                  <circle cx="50" cy="50" r="24" fill="none" stroke="#1a1a18" strokeWidth="0.4" strokeDasharray="2 1" opacity="0.2" />
-                  {filteredListings.map(l => {
-                    const pin = pinPos[l.id]
-                    if (!pin) return null
-                    return (
-                      <g key={l.id} className="cursor-pointer" onClick={() => openStudentListing(l)}>
-                        <circle cx={pin.x} cy={pin.y} r="5.5" fill="#111827" stroke="white" strokeWidth="1" />
-                        <text x={pin.x} y={pin.y + 1.5} textAnchor="middle" fontSize="2.8" fill="white" fontWeight="bold">৳{Math.round(l.price / 1000)}k</text>
-                      </g>
-                    )
-                  })}
-                </svg>
-                <div className="mt-3 space-y-2">
-                  {filteredListings.slice(0, 5).map(l => (
-                    <div key={l.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 px-2 py-1.5 rounded-lg" onClick={() => openStudentListing(l)}>
-                      <div className="w-2 h-2 bg-[#111827] rounded-full flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-medium text-[#111827] truncate">{l.title}</div>
-                        <div className="text-[10px] text-gray-400">{l.distance} · ৳{l.price.toLocaleString()}</div>
-                      </div>
-                    </div>
-                  ))}
+          <CampusMap
+            height={320}
+            markers={filteredListings.flatMap(listing => listing.mapPin ? [{
+              id: listing.id,
+              label: listing.title,
+              description: `৳${listing.price.toLocaleString()}/month · ${listing.distance} from UIU`,
+              onClick: () => openStudentListing(listing),
+              ...listing.mapPin,
+            }] : [])}
+          />
+          <div className="mt-3 space-y-2">
+            {filteredListings.slice(0, 5).map(listing => (
+              <div key={listing.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 px-2 py-1.5 rounded-lg" onClick={() => openStudentListing(listing)}>
+                <div className="w-2 h-2 bg-[#c87941] rounded-full flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-medium text-[#111827] truncate">{listing.title}</div>
+                  <div className="text-[10px] text-gray-400">{listing.distance} · ৳{listing.price.toLocaleString()}</div>
                 </div>
-              </>
-            )
-          })()}
+              </div>
+            ))}
+          </div>
         </div>
         <div className="p-4 border-t border-gray-100">
           <div className="bg-[#111827] text-white text-xs text-center rounded-xl py-2.5 font-semibold">{filteredListings.length} properties near UIU</div>

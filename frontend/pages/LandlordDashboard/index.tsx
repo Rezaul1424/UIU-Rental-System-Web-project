@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Listing } from '../../types'
+import { distanceFromCampusKm, type GeoCoordinates } from '../../lib/geo'
 import ListingDetailPage from '../../components/ListingDetail'
 import NotificationBell from '../../components/NotificationBell'
 import { addLandlordMaintenanceComment, createListing, deleteListing, getApplications, getLeases, getLandlordChat, getLandlordComplaints, getLandlordMaintenanceComments, getLandlordNotifications, getMaintenanceRequests, getMyListings, getProfile, markLandlordNotificationsRead, reviewApplication, sendLandlordChat, submitLandlordComplaint as submitLandlordComplaintApi, updateListing, updateMaintenanceStatus, updateProfile as updateLandlordProfile, type LandlordChatConversation } from '../../lib/landlordApi'
@@ -245,87 +246,39 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
   }
 
   const [editListingId, setEditListingId] = useState<number | null>(null)
-  const [editForm, setEditForm] = useState({ title: '', type: 'Single', price: '', distance: '', description: '', status: 'approved' })
+  const [editForm, setEditForm] = useState({ title: '', type: 'Single', price: '', description: '', status: 'approved' })
   const [editFacilities, setEditFacilities] = useState<string[]>([])
   const toggleEditFacility = (f: string) => setEditFacilities(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f])
   const [editAddrForm, setEditAddrForm] = useState({ street: '', area: '', city: 'Dhaka', district: 'Dhaka', postal: '' })
-  const [editMapPin, setEditMapPin] = useState<{ x: number; y: number } | null>(null)
+  const [editMapPin, setEditMapPin] = useState<GeoCoordinates | null>(null)
   const [editMapKm, setEditMapKm] = useState('')
-  const [editAddrSyncing, setEditAddrSyncing] = useState(false)
 
   const handleEditAddrChange = (field: keyof typeof editAddrForm, value: string) => {
-    const next = { ...editAddrForm, [field]: value }
-    setEditAddrForm(next)
-    if (field === 'street' || field === 'area') {
-      const combined = `${next.street} ${next.area}`.toLowerCase()
-      const pin = geocodeAddress(combined)
-      if (pin) {
-        setEditAddrSyncing(true)
-        setTimeout(() => { setEditMapPin(pin); setEditMapKm(pin.km ?? ''); setEditAddrSyncing(false) }, 600)
-      }
-    }
+    setEditAddrForm(current => ({ ...current, [field]: value }))
   }
 
-  const handleEditMapPin = (p: { x: number; y: number }) => {
-    const rev = reverseGeocode(p.x, p.y)
+  const handleEditMapPin = (p: GeoCoordinates) => {
     setEditMapPin(p)
-    setEditMapKm(rev.km)
-    setEditAddrForm({ street: rev.street, area: rev.area, city: rev.city, district: rev.district, postal: rev.postal })
+    setEditMapKm(distanceFromCampusKm(p).toFixed(1))
   }
 
   const openEdit = (id: number) => {
     const l = myListings.find(m => m.id === id)
     if (!l) return
     setEditListingId(id)
-    setEditForm({ title: l.title, type: l.type, price: String(l.price), distance: String(l.distance), description: 'Comfortable and well-maintained unit with easy access to UIU campus.', status: l.status || 'approved' })
+    setEditForm({ title: l.title, type: l.type, price: String(l.price), description: 'Comfortable and well-maintained unit with easy access to UIU campus.', status: l.status || 'approved' })
     setEditFacilities(l.facilities ?? [])
     // Pre-populate address from listing data if available
     setEditAddrForm({ street: l.street || '', area: l.area || '', city: 'Dhaka', district: 'Dhaka', postal: '' })
     setEditMapPin(l.mapPin ?? null)
-    setEditMapKm(l.mapPin ? String(Math.hypot(l.mapPin.x - 50, l.mapPin.y - 50) * 0.042).slice(0, 3) : '')
+    setEditMapKm(l.mapPin ? distanceFromCampusKm(l.mapPin).toFixed(1) : '')
     setPage('edit-listing')
-  }
-
-  // ── Add Listing + Map/Address sync ──────────────────────────────────────────
-  // Known landmark anchors (map %, named area, approx km from UIU at 50,50)
-  const LANDMARKS = [
-    { keys: ['gate 3', 'north', 'gate3'], x: 50, y: 34, area: 'Gate 3 Area, North Campus', km: '0.3' },
-    { keys: ['south', 'gate 1', 'gate1'], x: 50, y: 66, area: 'Gate 1 Area, South Campus', km: '0.6' },
-    { keys: ['bashundhara', 'bashundha'], x: 57, y: 37, area: 'Bashundhara R/A', km: '1.2' },
-    { keys: ['east gate', 'badda', 'east'], x: 67, y: 50, area: 'Badda, East Dhaka', km: '1.8' },
-    { keys: ['vatara', 'west', 'gate 4'], x: 34, y: 50, area: 'Vatara, West Area', km: '0.9' },
-    { keys: ['north side', 'meradia'], x: 48, y: 30, area: 'Meradia, North Side', km: '0.4' },
-  ]
-
-  const geocodeAddress = (street: string): { x: number; y: number; km: string } | null => {
-    const q = street.toLowerCase()
-    const hit = LANDMARKS.find(lm => lm.keys.some(k => q.includes(k)))
-    return hit ? { x: hit.x, y: hit.y, km: hit.km } : null
-  }
-
-  const reverseGeocode = (x: number, y: number): { street: string; area: string; city: string; district: string; postal: string; km: string } => {
-    // find nearest landmark
-    let best = LANDMARKS[0]
-    let bestDist = Infinity
-    for (const lm of LANDMARKS) {
-      const d = Math.hypot(lm.x - x, lm.y - y)
-      if (d < bestDist) { bestDist = d; best = lm }
-    }
-    const dx = x - 50; const dy = y - 50
-    const rawKm = Math.hypot(dx, dy) * 0.042
-    const km = rawKm.toFixed(1)
-    const dirMap: Record<string, string> = { N: 'Road 4, Block B', S: 'Road 7, Block D', E: 'Road 12, Block A', W: 'Road 2, Block C', NE: 'Road 9, Block E', NW: 'Road 1, Block F', SE: 'Road 11, Block G', SW: 'Road 3, Block H' }
-    const angle = Math.atan2(dy, dx) * 180 / Math.PI
-    const dir = angle < -157.5 ? 'W' : angle < -112.5 ? 'SW' : angle < -67.5 ? 'S' : angle < -22.5 ? 'SE' : angle < 22.5 ? 'E' : angle < 67.5 ? 'NE' : angle < 112.5 ? 'N' : angle < 157.5 ? 'NW' : 'W'
-    const postalMap: Record<string, string> = { N: '1212', S: '1219', E: '1213', W: '1216', NE: '1229', NW: '1215', SE: '1230', SW: '1218' }
-    return { street: dirMap[dir] ?? 'Road 5, Block A', area: best.area, city: 'Dhaka', district: 'Dhaka', postal: postalMap[dir] ?? '1212', km }
   }
 
   const [form, setForm] = useState({ title: '', type: 'Single', price: '', description: '' })
   const [addrForm, setAddrForm] = useState({ street: '', area: '', city: 'Dhaka', district: 'Dhaka', postal: '' })
-  const [mapPin, setMapPin] = useState<{ x: number; y: number } | null>(null)
+  const [mapPin, setMapPin] = useState<GeoCoordinates | null>(null)
   const [mapKm, setMapKm] = useState('')
-  const [addrSyncing, setAddrSyncing] = useState(false)
   const [facilities, setFacilities] = useState<string[]>([])
   const toggleFacility = (f: string) => setFacilities(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f])
 
@@ -391,6 +344,10 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
       setDashboardError('Please complete the listing title, price, and address before publishing.')
       return
     }
+    if (!mapPin) {
+      setDashboardError('Click the map to set the property’s real location before publishing.')
+      return
+    }
 
     try {
       const payload = {
@@ -407,9 +364,8 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
           area: addrForm.area || 'UIU Area',
           city: addrForm.city || 'Dhaka',
           district: addrForm.district || 'Dhaka',
-          // map_pin_x/y stored as 0-100 percentage coords, not real lat/lng
-          latitude: mapPin?.x ?? 50,
-          longitude: mapPin?.y ?? 50,
+          latitude: mapPin.latitude,
+          longitude: mapPin.longitude,
         },
         status: 'approved',
       }
@@ -420,6 +376,8 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
       setDashboardError('')
       setForm({ title: '', type: 'Single', price: '', description: '' })
       setAddrForm({ street: '', area: '', city: 'Dhaka', district: 'Dhaka', postal: '' })
+      setMapPin(null)
+      setMapKm('')
       setFacilities([])
     } catch (error) {
       setDashboardError(error instanceof Error ? error.message : 'Listing creation failed.')
@@ -428,6 +386,10 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
 
   const handleUpdateListing = async () => {
     if (editListingId === null) return
+    if (!editMapPin) {
+      setDashboardError('Click the map to set the property’s real location before saving.')
+      return
+    }
     try {
       const payload = {
         title: editForm.title.trim(),
@@ -443,9 +405,8 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
           area: editAddrForm.area || 'UIU Area',
           city: editAddrForm.city || 'Dhaka',
           district: editAddrForm.district || 'Dhaka',
-          // map_pin_x/y stored as 0-100 percentage coords, not real lat/lng
-          latitude: editMapPin?.x ?? 50,
-          longitude: editMapPin?.y ?? 50,
+          latitude: editMapPin.latitude,
+          longitude: editMapPin.longitude,
         },
         status: editForm.status || 'approved',
       }
@@ -465,28 +426,13 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
     setRoomSizeInputs(s => ({ ...s, [room]: Array.from({ length: n }, (_, i) => s[room]?.[i] ?? '') }))
   }
 
-  // When address field changes → geocode → move pin
   const handleAddrChange = (field: keyof typeof addrForm, value: string) => {
-    const next = { ...addrForm, [field]: value }
-    setAddrForm(next)
-    if (field === 'street' || field === 'area') {
-      const combined = `${next.street} ${next.area}`.toLowerCase()
-      const geo = geocodeAddress(combined)
-      if (geo) {
-        setMapPin({ x: geo.x, y: geo.y })
-        setMapKm(geo.km)
-      }
-    }
+    setAddrForm(current => ({ ...current, [field]: value }))
   }
 
-  // When pin placed on map → reverse geocode → fill address fields
-  const handleMapPin = (p: { x: number; y: number }) => {
+  const handleMapPin = (p: GeoCoordinates) => {
     setMapPin(p)
-    setAddrSyncing(true)
-    const rev = reverseGeocode(p.x, p.y)
-    setAddrForm({ street: rev.street, area: rev.area, city: rev.city, district: rev.district, postal: rev.postal })
-    setMapKm(rev.km)
-    setTimeout(() => setAddrSyncing(false), 600)
+    setMapKm(distanceFromCampusKm(p).toFixed(1))
   }
 
   // ── Rental requests ──────────────────────────────────────────────────────────
@@ -721,7 +667,13 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
   const isEditDirty = editListingId !== null && (() => {
     const orig = myListings.find(l => l.id === editListingId)
     if (!orig) return false
-    return editForm.title !== orig.title || editForm.price !== String(orig.price) || editForm.distance !== String(orig.distance) || editForm.type !== orig.type
+    return editForm.title !== orig.title
+      || editForm.price !== String(orig.price)
+      || editForm.type !== orig.type
+      || editAddrForm.street !== (orig.street ?? '')
+      || editAddrForm.area !== (orig.area ?? '')
+      || editMapPin?.latitude !== orig.mapPin?.latitude
+      || editMapPin?.longitude !== orig.mapPin?.longitude
   })()
 
   const isAddDirty = form.title.trim() !== '' || form.price !== '' || addrForm.street !== '' || facilities.length > 0
@@ -891,7 +843,7 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
               handleAddrChange={handleAddrChange}
               mapPin={mapPin}
               mapKm={mapKm}
-              addrSyncing={addrSyncing}
+              addrSyncing={false}
               facilities={facilities}
               toggleFacility={toggleFacility}
               roomCounts={roomCounts}
@@ -924,7 +876,7 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
               handleEditAddrChange={handleEditAddrChange}
               editMapPin={editMapPin}
               editMapKm={editMapKm}
-              editAddrSyncing={editAddrSyncing}
+              editAddrSyncing={false}
               handleEditMapPin={handleEditMapPin}
               roomCounts={roomCounts}
               roomSizeInputs={roomSizeInputs}
