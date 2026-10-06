@@ -134,8 +134,8 @@ model Property {
   addressArea      String?        @map("address_area") @db.VarChar(100)
   addressCity      String         @default("Dhaka") @map("address_city") @db.VarChar(50)
   addressPostal    String?        @map("address_postal") @db.VarChar(20)
-  mapPinX          Decimal        @default(50.00) @map("map_pin_x") @db.Decimal(5, 2)
-  mapPinY          Decimal        @default(50.00) @map("map_pin_y") @db.Decimal(5, 2)
+  mapPinX          Decimal?       @map("map_pin_x") @db.Decimal(10, 7)
+  mapPinY          Decimal?       @map("map_pin_y") @db.Decimal(10, 7)
   createdAt        DateTime       @default(now()) @map("created_at")
   updatedAt        DateTime       @updatedAt @map("updated_at")
 
@@ -519,4 +519,3 @@ model Notification {
 
   @@map("notifications")
 }
-

@@ -8,6 +8,11 @@ import type {
   LandlordProfile,
   MaintenanceUpdatePayload,
 } from '../contracts/landlord.js';
+import { addAdminComplaintFixture } from '../complaints/admin-repository.js';
+import {
+  addAdminComplaintNotificationFixture,
+  notifyAdminsAboutComplaint,
+} from '../notifications/admin-repository.js';
 
 const db = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
@@ -37,6 +42,13 @@ type DbPropertyRow = RowDataPacket & {
   map_pin_y?: number | string | null;
   created_at: Date;
   updated_at: Date;
+};
+
+type LandlordListingResponse = Omit<LandlordListingPayload, 'address'> & {
+  address: Omit<LandlordListingPayload['address'], 'latitude' | 'longitude'> & {
+    latitude: number | null;
+    longitude: number | null;
+  };
 };
 
 type DbAmenityRow = RowDataPacket & {
@@ -153,6 +165,19 @@ function useFixtures(): boolean {
   return process.env.NODE_ENV === 'test';
 }
 
+function distanceFromUiu(latitude: number, longitude: number): number {
+  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+  const campusLatitude = 23.7989022;
+  const campusLongitude = 90.4495995;
+  const latitudeDelta = toRadians(latitude - campusLatitude);
+  const longitudeDelta = toRadians(longitude - campusLongitude);
+  const campusLatitudeRadians = toRadians(campusLatitude);
+  const locationLatitudeRadians = toRadians(latitude);
+  const haversine = Math.sin(latitudeDelta / 2) ** 2
+    + Math.cos(campusLatitudeRadians) * Math.cos(locationLatitudeRadians) * Math.sin(longitudeDelta / 2) ** 2;
+  return Number((6371 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine))).toFixed(2));
+}
+
 function toListType(value: string): LandlordListingPayload['type'] {
   const normalized = value.toLowerCase();
   if (normalized.includes('studio')) return 'studio';
@@ -211,7 +236,7 @@ async function getAmenitiesForProperties(propertyIds: number[]): Promise<Map<num
   return map;
 }
 
-const normalizeListing = (row: DbPropertyRow, facilities: string[] = []): LandlordListingPayload & { id: string; createdAt: string; updatedAt: string } => ({
+const normalizeListing = (row: DbPropertyRow, facilities: string[] = []): LandlordListingResponse & { id: string; createdAt: string; updatedAt: string } => ({
   id: String(row.id),
   title: row.title,
   description: row.description ?? '',
@@ -226,8 +251,8 @@ const normalizeListing = (row: DbPropertyRow, facilities: string[] = []): Landlo
     area: row.address_area ?? undefined,
     city: row.address_city ?? 'Dhaka',
     district: row.address_area ?? row.address_city ?? 'Dhaka',
-    latitude: Number(row.map_pin_x ?? 50),
-    longitude: Number(row.map_pin_y ?? 50),
+    latitude: row.map_pin_x == null ? null : Number(row.map_pin_x),
+    longitude: row.map_pin_y == null ? null : Number(row.map_pin_y),
   },
   status: toListingStatus(row.status),
   createdAt: row.created_at.toISOString(),
@@ -237,9 +262,9 @@ const normalizeListing = (row: DbPropertyRow, facilities: string[] = []): Landlo
 export interface LandlordRepository {
   getProfile(userId: string): Promise<LandlordProfile | null>;
   updateProfile(userId: string, payload: { name?: string; phone?: string; companyName?: string }): Promise<LandlordProfile | null>;
-  getMyListings(landlordId: string): Promise<LandlordListingPayload[]>;
+  getMyListings(landlordId: string): Promise<LandlordListingResponse[]>;
   createListing(landlordId: string, payload: LandlordListingPayload): Promise<LandlordListingPayload & { id: string; createdAt: string; updatedAt: string }>;
-  updateListing(landlordId: string, listingId: string, payload: Partial<LandlordListingPayload>): Promise<LandlordListingPayload & { id: string; createdAt: string; updatedAt: string }>;
+  updateListing(landlordId: string, listingId: string, payload: Partial<LandlordListingPayload>): Promise<LandlordListingResponse & { id: string; createdAt: string; updatedAt: string }>;
   deleteListing(landlordId: string, listingId: string): Promise<boolean>;
   getApplications(landlordId: string): Promise<Array<{ id: string; propertyId: string; studentId: string; landlordId: string; status: 'under-review' | 'accepted' | 'rejected' | 'cancelled'; createdAt: string }>>;
   reviewApplication(landlordId: string, applicationId: string, payload: ApplicationReviewPayload): Promise<{ id: string; status: 'under-review' | 'accepted' | 'rejected' | 'cancelled'; reviewedAt: string }>;
@@ -312,7 +337,7 @@ export const landlordRepository: LandlordRepository = {
     return this.getProfile(userId);
   },
 
-  async getMyListings(landlordId: string): Promise<LandlordListingPayload[]> {
+  async getMyListings(landlordId: string): Promise<LandlordListingResponse[]> {
     if (useFixtures()) {
       return (testListings.get(landlordId) ?? []).map((listing) => ({
         title: listing.title,
@@ -379,7 +404,7 @@ export const landlordRepository: LandlordRepository = {
       payload.description,
       toDbListingType(payload.type),
       payload.priceBDT,
-      0.3,
+      distanceFromUiu(payload.address.latitude, payload.address.longitude),
       toDbListingStatus(payload.status),
       280,
       payload.roommateCapacity ?? 1,
@@ -423,7 +448,7 @@ export const landlordRepository: LandlordRepository = {
     };
   },
 
-  async updateListing(landlordId: string, listingId: string, payload: Partial<LandlordListingPayload>): Promise<LandlordListingPayload & { id: string; createdAt: string; updatedAt: string }> {
+  async updateListing(landlordId: string, listingId: string, payload: Partial<LandlordListingPayload>): Promise<LandlordListingResponse & { id: string; createdAt: string; updatedAt: string }> {
     if (useFixtures()) {
       const list = testListings.get(landlordId) ?? [];
       const index = list.findIndex((listing) => listing.id === listingId);
@@ -466,6 +491,7 @@ export const landlordRepository: LandlordRepository = {
       updates.push('address_city = ?'); values.push(payload.address.city);
       updates.push('map_pin_x = ?'); values.push(payload.address.latitude);
       updates.push('map_pin_y = ?'); values.push(payload.address.longitude);
+      updates.push('distance_km = ?'); values.push(distanceFromUiu(payload.address.latitude, payload.address.longitude));
     }
     if (updates.length === 0) {
       const [rows] = await db.query<DbPropertyRow[]>('SELECT * FROM properties WHERE id = ? AND landlord_id = ? LIMIT 1', [numericListingId, landlordNumericId]);
@@ -919,6 +945,18 @@ export const landlordRepository: LandlordRepository = {
       const list = testLandlordComplaints.get(landlordId) ?? [];
       list.unshift(complaint);
       testLandlordComplaints.set(landlordId, list);
+      addAdminComplaintFixture({
+        id: complaintId,
+        from: `Landlord ${landlordId}`,
+        fromType: 'Landlord',
+        against: payload.against || 'Tenant / User',
+        property: payload.property || '—',
+        category: payload.category,
+        createdAt: complaint.createdAt,
+        status: 'Submitted',
+        description: fullDesc,
+      });
+      addAdminComplaintNotificationFixture(complaintId, 'landlord', payload.category);
       return complaint;
     }
 
@@ -937,11 +975,22 @@ export const landlordRepository: LandlordRepository = {
       if (pRows[0]?.id) propId = Number(pRows[0].id);
     }
 
-    await db.execute(
-      `INSERT INTO complaints (id, complainant_id, accused_id, property_id, category, description, status)
-       VALUES (?, ?, ?, ?, ?, ?, 'Submitted')`,
-      [complaintId, userId, accusedId, propId, payload.category, fullDesc],
-    );
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+      await connection.execute(
+        `INSERT INTO complaints (id, complainant_id, accused_id, property_id, category, description, status)
+         VALUES (?, ?, ?, ?, ?, ?, 'Submitted')`,
+        [complaintId, userId, accusedId, propId, payload.category, fullDesc],
+      );
+      await notifyAdminsAboutComplaint(connection, complaintId, 'landlord', payload.category);
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
 
     return {
       id: complaintId,
@@ -1020,4 +1069,3 @@ export function seedFixtureMaintenanceRequest(landlordId: string, requestId: str
     testMaintenanceRequests.set(landlordId, requests);
   }
 }
-

@@ -3,6 +3,7 @@ import request from 'supertest';
 import { buildApp } from '../src/app.js';
 import { createAuthToken, registerUser } from '../src/auth/auth.js';
 import { resetAdminComplaintFixtures } from '../src/complaints/admin-repository.js';
+import { resetAdminNotificationFixtures } from '../src/notifications/admin-repository.js';
 import { clearAuditEvents, getAuditEvents } from '../src/security/audit.js';
 
 const app = buildApp();
@@ -16,7 +17,62 @@ describe('Module 10 administrator complaints', () => {
   beforeEach(() => {
     process.env.NODE_ENV = 'test';
     resetAdminComplaintFixtures();
+    resetAdminNotificationFixtures();
     clearAuditEvents();
+  });
+
+  it('forwards student and landlord complaints to the admin list and notification feed', async () => {
+    const studentToken = await tokenFor('student', `complaints-submit-student-${Date.now()}@uiu.ac.bd`);
+    const landlordToken = await createAuthToken({
+      id: '2',
+      name: 'Rahman Faruk',
+      email: 'faruk@example.com',
+      role: 'landlord',
+      status: 'active',
+    });
+    const adminToken = await tokenFor('admin', `complaints-submit-admin-${Date.now()}@uiu.ac.bd`);
+
+    const studentSubmission = await request(app)
+      .post('/api/v1/student/complaints')
+      .set('Authorization', `Bearer ${studentToken}`)
+      .send({
+        against: 'Test Landlord',
+        property: 'Test Student Property',
+        category: 'Maintenance',
+        subject: 'Student complaint',
+        description: 'Maintenance issue needs review.',
+      });
+    expect(studentSubmission.status).toBe(201);
+
+    const landlordSubmission = await request(app)
+      .post('/api/v1/landlord/complaints')
+      .set('Authorization', `Bearer ${landlordToken}`)
+      .send({
+        against: 'Test Student',
+        property: 'Test Landlord Property',
+        category: 'Payment',
+        subject: 'Landlord complaint',
+        description: 'Payment issue needs review.',
+      });
+    expect(landlordSubmission.status).toBe(201);
+
+    const adminComplaints = await request(app)
+      .get('/api/v1/admin/complaints')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(adminComplaints.status).toBe(200);
+    expect(adminComplaints.body.data).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: studentSubmission.body.data.id, fromType: 'Student', category: 'Maintenance' }),
+      expect.objectContaining({ id: landlordSubmission.body.data.id, fromType: 'Landlord', category: 'Payment' }),
+    ]));
+
+    const adminNotifications = await request(app)
+      .get('/api/v1/admin/notifications')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(adminNotifications.status).toBe(200);
+    expect(adminNotifications.body.data).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'complaint', message: expect.stringContaining(studentSubmission.body.data.id) }),
+      expect.objectContaining({ type: 'complaint', message: expect.stringContaining(landlordSubmission.body.data.id) }),
+    ]));
   });
 
   it('allows admins to search and filter persisted complaint records', async () => {

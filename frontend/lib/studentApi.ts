@@ -1,5 +1,6 @@
 import type { Listing } from '../types';
 import { api } from './api';
+import { parseUiuCoordinates } from './geo';
 
 const toListingId = (value: unknown) => {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -39,6 +40,47 @@ export type StudentProfile = {
 export const getProfile = () => api.get<StudentProfile>('/api/v1/student/profile');
 export const updateProfile = (payload: { name?: string; phone?: string; studentId?: string }) =>
   api.patch<StudentProfile>('/api/v1/student/profile', payload);
+
+export type StudentNotification = {
+  id: number;
+  title: string;
+  message: string;
+  type: string;
+  isRead: boolean;
+  createdAt: string;
+};
+
+export const getStudentNotifications = async (): Promise<StudentNotification[]> => {
+  const payload = await api.get<Array<any> | { data?: Array<any> }>('/api/v1/student/notifications');
+  const notifications = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
+
+  return notifications.map((notification) => ({
+    id: Number(notification.id ?? Date.now()),
+    title: String(notification.title ?? 'Notification'),
+    message: String(notification.message ?? notification.text ?? ''),
+    type: String(notification.type ?? 'general'),
+    isRead: Boolean(notification.isRead ?? notification.read ?? false),
+    createdAt: String(notification.createdAt ?? new Date().toISOString()),
+  }));
+};
+
+export const markStudentNotificationsRead = (notificationId?: number) =>
+  api.patch('/api/v1/student/notifications/read', notificationId === undefined ? undefined : { notificationId });
+
+export type StudentChatConversation = {
+  id: string;
+  studentId: string;
+  studentName: string;
+  landlordId: string;
+  landlordName: string;
+  propertyId: string;
+  propertyTitle: string;
+  messages: Array<{ id: string; from: 'student' | 'landlord'; text: string; createdAt: string }>;
+};
+
+export const getStudentChat = () => api.get<StudentChatConversation[]>('/api/v1/student/chat');
+export const sendStudentChat = (propertyId: string, message: string) =>
+  api.post<StudentChatConversation>('/api/v1/student/chat', { propertyId, message });
 
 export const getFavorites = async (): Promise<number[]> => {
   const payload = await api.get<Array<any> | { data?: Array<any> }>('/api/v1/student/favorites');
@@ -287,9 +329,7 @@ export const normalizeBackendListing = (item: any): Listing => {
           url: typeof img === 'string' ? img : (img.url || primaryImg),
         }))
       : undefined,
-    mapPin: item.address?.latitude != null && item.address?.longitude != null
-      ? { x: Number(item.address.latitude), y: Number(item.address.longitude) }
-      : undefined,
+    mapPin: parseUiuCoordinates(item.address?.latitude, item.address?.longitude),
     street: item.address?.line1,
     area: item.address?.area,
   };

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Listing } from '../../types'
+import { distanceFromCampusKm, type GeoCoordinates } from '../../lib/geo'
 import ListingDetailPage from '../../components/ListingDetail'
 import NotificationBell from '../../components/NotificationBell'
-import { addLandlordMaintenanceComment, createListing, deleteListing, getApplications, getLeases, getLandlordComplaints, getLandlordMaintenanceComments, getMaintenanceRequests, getMyListings, getProfile, reviewApplication, submitLandlordComplaint as submitLandlordComplaintApi, updateListing, updateMaintenanceStatus, updateProfile as updateLandlordProfile } from '../../lib/landlordApi'
-import { landlordNotifs } from './constants'
+import { addLandlordMaintenanceComment, createListing, deleteListing, getApplications, getLeases, getLandlordChat, getLandlordComplaints, getLandlordMaintenanceComments, getLandlordNotifications, getMaintenanceRequests, getMyListings, getProfile, markLandlordNotificationsRead, reviewApplication, sendLandlordChat, submitLandlordComplaint as submitLandlordComplaintApi, updateListing, updateMaintenanceStatus, updateProfile as updateLandlordProfile, type LandlordChatConversation } from '../../lib/landlordApi'
 import LandlordSidebarNav, { type LandlordPage } from './Sidebar'
 import type { MaintReq, RequestItem, ChatMsg, MaintStage } from './types'
 import OverviewPage from './Overview'
@@ -18,6 +18,24 @@ import SettingsPage from './Settings'
 
 export default function LandlordDashboard({ userName, onSignOut }: { userName: string; onSignOut: () => void }) {
 
+  const [landlordNotifications, setLandlordNotifications] = useState<Array<{ id: number; text: string; sub?: string; time: string; read: boolean }>>([])
+
+  const notificationAge = (value: string) => {
+    const minutes = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60_000))
+    if (minutes < 60) return `${minutes} min ago`
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) return `${hours} hr ago`
+    return `${Math.floor(hours / 24)} day${Math.floor(hours / 24) === 1 ? '' : 's'} ago`
+  }
+
+  const mapLandlordNotification = (notification: { id: number; title: string; message: string; isRead: boolean; createdAt: string }) => ({
+    id: notification.id,
+    text: notification.title,
+    sub: notification.message,
+    time: notificationAge(notification.createdAt),
+    read: notification.isRead,
+  })
+
   const [page, setPage] = useState<LandlordPage>('overview')
   const [landlordView, setLandlordView] = useState<Listing | null>(null)
   const [dashboardLoading, setDashboardLoading] = useState(false)
@@ -27,6 +45,7 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
   const [leases, setLeases] = useState<Array<{ id?: string; propertyId: string; propertyTitle?: string; propertyCode?: string; studentId?: string; studentName?: string; status?: string; monthlyRent?: number; startDate?: string; endDate?: string }>>([])
   const [requests, setRequests] = useState<RequestItem[]>([])
   const [mReqs, setMReqs] = useState<MaintReq[]>([])
+  const [chatConversations, setChatConversations] = useState<LandlordChatConversation[]>([])
   type LandlordComplaint = { id: string; against: string; property: string; category: string; subject: string; description: string; date: string; status: 'Submitted' | 'Under Review' | 'Responded' | 'Resolved' | 'Closed' }
   const [landlordComplaints, setLandlordComplaints] = useState<LandlordComplaint[]>([])
   const [showLandlordComplaintForm, setShowLandlordComplaintForm] = useState(false)
@@ -65,11 +84,50 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
     return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
   }
 
+  const markLandlordNotificationRead = async (id: number) => {
+    setLandlordNotifications(items => items.map(item => item.id === id ? { ...item, read: true } : item))
+    try {
+      await markLandlordNotificationsRead(id)
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Could not mark notification as read.')
+    }
+  }
+
+  const markAllLandlordNotificationsRead = async () => {
+    setLandlordNotifications(items => items.map(item => ({ ...item, read: true })))
+    try {
+      await markLandlordNotificationsRead()
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Could not mark notifications as read.')
+    }
+  }
+
   const mapStageToStatus = (stage: MaintStage): 'open' | 'in-progress' | 'resolved' => {
     if (stage >= 5) return 'resolved'
     if (stage >= 2) return 'in-progress'
     return 'open'
   }
+
+  useEffect(() => {
+    let active = true
+
+    const loadLandlordNotifications = async () => {
+      try {
+        const notifications = await getLandlordNotifications()
+        if (active) {
+          setLandlordNotifications(notifications.map(mapLandlordNotification))
+        }
+      } catch (error) {
+        if (active) {
+          setDashboardError(error instanceof Error ? error.message : 'Could not load notifications.')
+        }
+      }
+    }
+
+    loadLandlordNotifications()
+
+    return () => { active = false }
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -85,7 +143,10 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
           getApplications().catch(() => []),
           getLeases().catch(() => []),
           getMaintenanceRequests().catch(() => []),
-          getLandlordComplaints().catch(() => []),
+          getLandlordComplaints().catch((error: unknown) => {
+            if (active) setDashboardError(error instanceof Error ? error.message : 'Could not load complaints.')
+            return []
+          }),
         ])
 
         if (!active) return
@@ -101,6 +162,8 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
             id: Number(application.id ?? Date.now()),
             student: application.studentName || `Student ${application.studentId}`,
             studentId: application.studentCardNo || String(application.studentId ?? 'N/A'),
+            userId: String(application.studentId ?? ''),
+            propertyId: String(application.propertyId ?? ''),
             dept: application.department || 'UIU Student',
             phone: application.contactPhone || 'N/A',
             moveIn: application.moveInDate ? new Date(application.moveInDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Flexible',
@@ -129,11 +192,11 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
             hasPhotos: false,
           })))
         }
-        if (Array.isArray(landComplaintsResult) && landComplaintsResult.length > 0) {
+        if (Array.isArray(landComplaintsResult)) {
           setLandlordComplaints(landComplaintsResult.map((c: any) => ({
             id: c.id ?? `CMP-${Date.now()}`,
-            against: c.accusedName ?? '',
-            property: c.propertyTitle ?? '',
+            against: c.against ?? c.accusedName ?? '',
+            property: c.property ?? c.propertyTitle ?? '',
             category: c.category ?? 'Other',
             subject: c.description?.split(' — ')[0] ?? '',
             description: c.description?.split(' — ').slice(1).join(' — ') ?? c.description ?? '',
@@ -153,6 +216,22 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
     return () => { active = false }
   }, [])
 
+  useEffect(() => {
+    if (page !== 'chat') return
+    let active = true
+    const loadChat = async () => {
+      try {
+        const conversations = await getLandlordChat()
+        if (active) setChatConversations(conversations)
+      } catch (error) {
+        if (active) setDashboardError(error instanceof Error ? error.message : 'Unable to load chat messages.')
+      }
+    }
+    void loadChat()
+    const timer = window.setInterval(() => { void loadChat() }, 3000)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [page])
+
   const handleUpdateLandlordProfile = async (data: { name?: string; phone?: string; companyName?: string }): Promise<boolean> => {
     try {
       const updated = await updateLandlordProfile(data)
@@ -167,87 +246,39 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
   }
 
   const [editListingId, setEditListingId] = useState<number | null>(null)
-  const [editForm, setEditForm] = useState({ title: '', type: 'Single', price: '', distance: '', description: '', status: 'approved' })
+  const [editForm, setEditForm] = useState({ title: '', type: 'Single', price: '', description: '', status: 'approved' })
   const [editFacilities, setEditFacilities] = useState<string[]>([])
   const toggleEditFacility = (f: string) => setEditFacilities(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f])
   const [editAddrForm, setEditAddrForm] = useState({ street: '', area: '', city: 'Dhaka', district: 'Dhaka', postal: '' })
-  const [editMapPin, setEditMapPin] = useState<{ x: number; y: number } | null>(null)
+  const [editMapPin, setEditMapPin] = useState<GeoCoordinates | null>(null)
   const [editMapKm, setEditMapKm] = useState('')
-  const [editAddrSyncing, setEditAddrSyncing] = useState(false)
 
   const handleEditAddrChange = (field: keyof typeof editAddrForm, value: string) => {
-    const next = { ...editAddrForm, [field]: value }
-    setEditAddrForm(next)
-    if (field === 'street' || field === 'area') {
-      const combined = `${next.street} ${next.area}`.toLowerCase()
-      const pin = geocodeAddress(combined)
-      if (pin) {
-        setEditAddrSyncing(true)
-        setTimeout(() => { setEditMapPin(pin); setEditMapKm(pin.km ?? ''); setEditAddrSyncing(false) }, 600)
-      }
-    }
+    setEditAddrForm(current => ({ ...current, [field]: value }))
   }
 
-  const handleEditMapPin = (p: { x: number; y: number }) => {
-    const rev = reverseGeocode(p.x, p.y)
+  const handleEditMapPin = (p: GeoCoordinates) => {
     setEditMapPin(p)
-    setEditMapKm(rev.km)
-    setEditAddrForm({ street: rev.street, area: rev.area, city: rev.city, district: rev.district, postal: rev.postal })
+    setEditMapKm(distanceFromCampusKm(p).toFixed(1))
   }
 
   const openEdit = (id: number) => {
     const l = myListings.find(m => m.id === id)
     if (!l) return
     setEditListingId(id)
-    setEditForm({ title: l.title, type: l.type, price: String(l.price), distance: String(l.distance), description: 'Comfortable and well-maintained unit with easy access to UIU campus.', status: l.status || 'approved' })
+    setEditForm({ title: l.title, type: l.type, price: String(l.price), description: 'Comfortable and well-maintained unit with easy access to UIU campus.', status: l.status || 'approved' })
     setEditFacilities(l.facilities ?? [])
     // Pre-populate address from listing data if available
     setEditAddrForm({ street: l.street || '', area: l.area || '', city: 'Dhaka', district: 'Dhaka', postal: '' })
     setEditMapPin(l.mapPin ?? null)
-    setEditMapKm(l.mapPin ? String(Math.hypot(l.mapPin.x - 50, l.mapPin.y - 50) * 0.042).slice(0, 3) : '')
+    setEditMapKm(l.mapPin ? distanceFromCampusKm(l.mapPin).toFixed(1) : '')
     setPage('edit-listing')
-  }
-
-  // ── Add Listing + Map/Address sync ──────────────────────────────────────────
-  // Known landmark anchors (map %, named area, approx km from UIU at 50,50)
-  const LANDMARKS = [
-    { keys: ['gate 3', 'north', 'gate3'], x: 50, y: 34, area: 'Gate 3 Area, North Campus', km: '0.3' },
-    { keys: ['south', 'gate 1', 'gate1'], x: 50, y: 66, area: 'Gate 1 Area, South Campus', km: '0.6' },
-    { keys: ['bashundhara', 'bashundha'], x: 57, y: 37, area: 'Bashundhara R/A', km: '1.2' },
-    { keys: ['east gate', 'badda', 'east'], x: 67, y: 50, area: 'Badda, East Dhaka', km: '1.8' },
-    { keys: ['vatara', 'west', 'gate 4'], x: 34, y: 50, area: 'Vatara, West Area', km: '0.9' },
-    { keys: ['north side', 'meradia'], x: 48, y: 30, area: 'Meradia, North Side', km: '0.4' },
-  ]
-
-  const geocodeAddress = (street: string): { x: number; y: number; km: string } | null => {
-    const q = street.toLowerCase()
-    const hit = LANDMARKS.find(lm => lm.keys.some(k => q.includes(k)))
-    return hit ? { x: hit.x, y: hit.y, km: hit.km } : null
-  }
-
-  const reverseGeocode = (x: number, y: number): { street: string; area: string; city: string; district: string; postal: string; km: string } => {
-    // find nearest landmark
-    let best = LANDMARKS[0]
-    let bestDist = Infinity
-    for (const lm of LANDMARKS) {
-      const d = Math.hypot(lm.x - x, lm.y - y)
-      if (d < bestDist) { bestDist = d; best = lm }
-    }
-    const dx = x - 50; const dy = y - 50
-    const rawKm = Math.hypot(dx, dy) * 0.042
-    const km = rawKm.toFixed(1)
-    const dirMap: Record<string, string> = { N: 'Road 4, Block B', S: 'Road 7, Block D', E: 'Road 12, Block A', W: 'Road 2, Block C', NE: 'Road 9, Block E', NW: 'Road 1, Block F', SE: 'Road 11, Block G', SW: 'Road 3, Block H' }
-    const angle = Math.atan2(dy, dx) * 180 / Math.PI
-    const dir = angle < -157.5 ? 'W' : angle < -112.5 ? 'SW' : angle < -67.5 ? 'S' : angle < -22.5 ? 'SE' : angle < 22.5 ? 'E' : angle < 67.5 ? 'NE' : angle < 112.5 ? 'N' : angle < 157.5 ? 'NW' : 'W'
-    const postalMap: Record<string, string> = { N: '1212', S: '1219', E: '1213', W: '1216', NE: '1229', NW: '1215', SE: '1230', SW: '1218' }
-    return { street: dirMap[dir] ?? 'Road 5, Block A', area: best.area, city: 'Dhaka', district: 'Dhaka', postal: postalMap[dir] ?? '1212', km }
   }
 
   const [form, setForm] = useState({ title: '', type: 'Single', price: '', description: '' })
   const [addrForm, setAddrForm] = useState({ street: '', area: '', city: 'Dhaka', district: 'Dhaka', postal: '' })
-  const [mapPin, setMapPin] = useState<{ x: number; y: number } | null>(null)
+  const [mapPin, setMapPin] = useState<GeoCoordinates | null>(null)
   const [mapKm, setMapKm] = useState('')
-  const [addrSyncing, setAddrSyncing] = useState(false)
   const [facilities, setFacilities] = useState<string[]>([])
   const toggleFacility = (f: string) => setFacilities(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f])
 
@@ -313,6 +344,10 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
       setDashboardError('Please complete the listing title, price, and address before publishing.')
       return
     }
+    if (!mapPin) {
+      setDashboardError('Click the map to set the property’s real location before publishing.')
+      return
+    }
 
     try {
       const payload = {
@@ -329,9 +364,8 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
           area: addrForm.area || 'UIU Area',
           city: addrForm.city || 'Dhaka',
           district: addrForm.district || 'Dhaka',
-          // map_pin_x/y stored as 0-100 percentage coords, not real lat/lng
-          latitude: mapPin?.x ?? 50,
-          longitude: mapPin?.y ?? 50,
+          latitude: mapPin.latitude,
+          longitude: mapPin.longitude,
         },
         status: 'approved',
       }
@@ -342,6 +376,8 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
       setDashboardError('')
       setForm({ title: '', type: 'Single', price: '', description: '' })
       setAddrForm({ street: '', area: '', city: 'Dhaka', district: 'Dhaka', postal: '' })
+      setMapPin(null)
+      setMapKm('')
       setFacilities([])
     } catch (error) {
       setDashboardError(error instanceof Error ? error.message : 'Listing creation failed.')
@@ -350,6 +386,10 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
 
   const handleUpdateListing = async () => {
     if (editListingId === null) return
+    if (!editMapPin) {
+      setDashboardError('Click the map to set the property’s real location before saving.')
+      return
+    }
     try {
       const payload = {
         title: editForm.title.trim(),
@@ -365,9 +405,8 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
           area: editAddrForm.area || 'UIU Area',
           city: editAddrForm.city || 'Dhaka',
           district: editAddrForm.district || 'Dhaka',
-          // map_pin_x/y stored as 0-100 percentage coords, not real lat/lng
-          latitude: editMapPin?.x ?? 50,
-          longitude: editMapPin?.y ?? 50,
+          latitude: editMapPin.latitude,
+          longitude: editMapPin.longitude,
         },
         status: editForm.status || 'approved',
       }
@@ -387,28 +426,13 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
     setRoomSizeInputs(s => ({ ...s, [room]: Array.from({ length: n }, (_, i) => s[room]?.[i] ?? '') }))
   }
 
-  // When address field changes → geocode → move pin
   const handleAddrChange = (field: keyof typeof addrForm, value: string) => {
-    const next = { ...addrForm, [field]: value }
-    setAddrForm(next)
-    if (field === 'street' || field === 'area') {
-      const combined = `${next.street} ${next.area}`.toLowerCase()
-      const geo = geocodeAddress(combined)
-      if (geo) {
-        setMapPin({ x: geo.x, y: geo.y })
-        setMapKm(geo.km)
-      }
-    }
+    setAddrForm(current => ({ ...current, [field]: value }))
   }
 
-  // When pin placed on map → reverse geocode → fill address fields
-  const handleMapPin = (p: { x: number; y: number }) => {
+  const handleMapPin = (p: GeoCoordinates) => {
     setMapPin(p)
-    setAddrSyncing(true)
-    const rev = reverseGeocode(p.x, p.y)
-    setAddrForm({ street: rev.street, area: rev.area, city: rev.city, district: rev.district, postal: rev.postal })
-    setMapKm(rev.km)
-    setTimeout(() => setAddrSyncing(false), 600)
+    setMapKm(distanceFromCampusKm(p).toFixed(1))
   }
 
   // ── Rental requests ──────────────────────────────────────────────────────────
@@ -515,22 +539,16 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
 
 
   // ── Chat ─────────────────────────────────────────────────────────────────────
-  // Current tenants: active lease; Potential tenants: applicants
   const currentTenants = useMemo(() => {
-    const activeLeaseTenants = leases
+    return leases
       .filter((lease) => lease.status === 'active')
       .map((lease) => ({
         name: lease.studentName || (lease.studentId ? `Student ${lease.studentId}` : 'Active Tenant'),
         listing: lease.propertyTitle || lease.propertyCode || (lease.propertyId ? `Property ${lease.propertyId}` : 'Current listing'),
         category: 'current' as const,
+        studentId: lease.studentId,
+        propertyId: lease.propertyCode || lease.propertyId,
       }))
-
-    return activeLeaseTenants.length > 0
-      ? activeLeaseTenants
-      : [
-          { name: 'Tanvir Ahmed', listing: 'Studio near Gate 3', category: 'current' as const },
-          { name: 'Sadia Islam', listing: 'Shared Mess – South Campus', category: 'current' as const },
-        ]
   }, [leases])
 
   const potentialTenants = useMemo(() => {
@@ -540,46 +558,59 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
         name: request.student || (request.studentId ? `Student ${request.studentId}` : 'Applicant'),
         listing: request.listing || 'Pending property',
         category: 'potential' as const,
+        studentId: request.userId,
+        propertyId: request.propertyId,
       }))
 
-    return applicantContacts.length > 0
-      ? applicantContacts
-      : [
-          { name: 'Rifat Hassan', listing: 'Studio near Gate 3', category: 'potential' as const },
-          { name: 'Alif Hossain', listing: 'Bachelor Flat – North Side', category: 'potential' as const },
-        ]
-  }, [requests])
+    const knownNames = new Set([...currentTenants, ...applicantContacts].map((contact) => contact.name))
+    const conversationContacts = chatConversations
+      .filter((conversation) => !knownNames.has(conversation.studentName))
+      .map((conversation) => ({
+        name: conversation.studentName,
+        listing: conversation.propertyTitle,
+        category: 'potential' as const,
+        studentId: conversation.studentId,
+        propertyId: conversation.propertyId,
+      }))
+    return [...applicantContacts, ...conversationContacts]
+  }, [requests, currentTenants, chatConversations])
 
-  const [activeChatName, setActiveChatName] = useState(currentTenants[0]?.name ?? 'Tanvir Ahmed')
-  const [chatThreads, setChatThreads] = useState<Record<string, ChatMsg[]>>(() => ({
-    'Tanvir Ahmed': [
-      { from: 'tenant', text: 'Hello! The AC has been making a loud noise lately.' },
-      { from: 'landlord', text: "Thanks for letting me know. I'll send a technician tomorrow." },
-      { from: 'tenant', text: 'Thank you! Appreciate the quick response.' },
-    ],
-    'Sadia Islam': [
-      { from: 'tenant', text: 'Hi, when will the pipe leak be fixed?' },
-      { from: 'landlord', text: "The technician is scheduled for this Friday. I'll confirm the time shortly." },
-    ],
-    'Rifat Hassan': [
-      { from: 'tenant', text: 'I submitted an application for the Studio near Gate 3. Can I schedule a viewing?' },
-    ],
-    'Alif Hossain': [],
-    ...(currentTenants[0] && currentTenants[0].name !== 'Tanvir Ahmed' ? { [currentTenants[0].name]: [{ from: 'tenant', text: 'I am following up on my maintenance request.' }] } : {}),
-    ...(potentialTenants[0] && !['Rifat Hassan', 'Alif Hossain'].includes(potentialTenants[0].name) ? { [potentialTenants[0].name]: [{ from: 'tenant', text: 'I would like to ask about viewing availability.' }] } : {}),
-  }))
+  const [activeChatName, setActiveChatName] = useState(currentTenants[0]?.name ?? '')
+  const chatThreads = useMemo(() => {
+    const threads: Record<string, ChatMsg[]> = {}
+    for (const conversation of [...chatConversations].reverse()) {
+      threads[conversation.studentName] = [
+        ...(threads[conversation.studentName] ?? []),
+        ...conversation.messages.map(({ from, text }) => ({ from: from === 'student' ? 'tenant' as const : 'landlord' as const, text })),
+      ]
+    }
+    return threads
+  }, [chatConversations])
 
   useEffect(() => {
     if (!currentTenants.some((tenant) => tenant.name === activeChatName) && !potentialTenants.some((tenant) => tenant.name === activeChatName)) {
-      setActiveChatName(currentTenants[0]?.name ?? potentialTenants[0]?.name ?? 'Tanvir Ahmed')
+      setActiveChatName(currentTenants[0]?.name ?? potentialTenants[0]?.name ?? '')
     }
   }, [activeChatName, currentTenants, potentialTenants])
   const [chatInput, setChatInput] = useState('')
 
-  const sendChat = () => {
-    if (!chatInput.trim()) return
-    setChatThreads(t => ({ ...t, [activeChatName]: [...(t[activeChatName] ?? []), { from: 'landlord', text: chatInput }] }))
-    setChatInput('')
+  const sendChat = async () => {
+    const message = chatInput.trim()
+    const contact = [...currentTenants, ...potentialTenants].find((tenant) => tenant.name === activeChatName)
+    const conversation = chatConversations.find((item) => item.studentName === activeChatName)
+    const studentId = contact?.studentId || conversation?.studentId
+    const propertyId = contact?.propertyId || conversation?.propertyId
+    if (!message || !studentId || !propertyId) {
+      setDashboardError('Select a tenant or applicant with a linked property before sending a message.')
+      return
+    }
+    try {
+      const updated = await sendLandlordChat(studentId, propertyId, message)
+      setChatConversations((items) => [...items.filter((item) => item.id !== updated.id), updated])
+      setChatInput('')
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Unable to send your message.')
+    }
   }
 
   // ── Confirmation overlay state ───────────────────────────────────────────────
@@ -606,37 +637,43 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
   // Landlord complaints submit handler
   const submitLandlordComplaint = async () => {
     if (!lcForm.subject.trim() || !lcForm.against.trim() || !lcForm.property.trim()) return
-    const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-    setLandlordComplaints(prev => [...prev, {
-      id: `CMP-${String(prev.length + 1).padStart(3, '0')}`,
-      against: lcForm.against,
-      property: lcForm.property,
-      category: lcForm.category,
-      subject: lcForm.subject,
-      description: lcForm.description,
-      date: today,
-      status: 'Submitted',
-    }])
     const savedForm = { ...lcForm }
-    setLcForm({ against: '', property: '', category: 'Late Payment', subject: '', description: '' })
-    setShowLandlordComplaintForm(false)
+    setDashboardError('')
     try {
-      await submitLandlordComplaintApi({
+      const created = await submitLandlordComplaintApi({
         against: savedForm.against,
         property: savedForm.property,
         category: savedForm.category,
         subject: savedForm.subject,
         description: savedForm.description,
       })
-    } catch (err) {
-      console.error('Failed to submit landlord complaint to backend:', err)
+      setLandlordComplaints(prev => [{
+        id: String(created?.id ?? `CMP-${Date.now()}`),
+        against: savedForm.against,
+        property: savedForm.property,
+        category: savedForm.category,
+        subject: savedForm.subject,
+        description: savedForm.description,
+        date: created?.date ?? new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+        status: 'Submitted',
+      }, ...prev])
+      setLcForm({ against: '', property: '', category: 'Late Payment', subject: '', description: '' })
+      setShowLandlordComplaintForm(false)
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Could not submit complaint.')
     }
   }
 
   const isEditDirty = editListingId !== null && (() => {
     const orig = myListings.find(l => l.id === editListingId)
     if (!orig) return false
-    return editForm.title !== orig.title || editForm.price !== String(orig.price) || editForm.distance !== String(orig.distance) || editForm.type !== orig.type
+    return editForm.title !== orig.title
+      || editForm.price !== String(orig.price)
+      || editForm.type !== orig.type
+      || editAddrForm.street !== (orig.street ?? '')
+      || editAddrForm.area !== (orig.area ?? '')
+      || editMapPin?.latitude !== orig.mapPin?.latitude
+      || editMapPin?.longitude !== orig.mapPin?.longitude
   })()
 
   const isAddDirty = form.title.trim() !== '' || form.price !== '' || addrForm.street !== '' || facilities.length > 0
@@ -740,7 +777,11 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
         )}
         {/* Notification bell */}
         <div className="flex justify-end px-6 pt-5">
-          <NotificationBell notifications={landlordNotifs} />
+          <NotificationBell
+            notifications={landlordNotifications}
+            onMarkRead={markLandlordNotificationRead}
+            onMarkAllRead={markAllLandlordNotificationsRead}
+          />
         </div>
         <div className="px-6 pb-6 max-w-5xl mx-auto space-y-6">
 
@@ -802,7 +843,7 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
               handleAddrChange={handleAddrChange}
               mapPin={mapPin}
               mapKm={mapKm}
-              addrSyncing={addrSyncing}
+              addrSyncing={false}
               facilities={facilities}
               toggleFacility={toggleFacility}
               roomCounts={roomCounts}
@@ -835,7 +876,7 @@ export default function LandlordDashboard({ userName, onSignOut }: { userName: s
               handleEditAddrChange={handleEditAddrChange}
               editMapPin={editMapPin}
               editMapKm={editMapKm}
-              editAddrSyncing={editAddrSyncing}
+              editAddrSyncing={false}
               handleEditMapPin={handleEditMapPin}
               roomCounts={roomCounts}
               roomSizeInputs={roomSizeInputs}

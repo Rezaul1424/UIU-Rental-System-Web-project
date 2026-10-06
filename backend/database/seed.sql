@@ -10,8 +10,8 @@ VALUES
 ON DUPLICATE KEY UPDATE
   `role` = VALUES(`role`), `password_hash` = VALUES(`password_hash`), `status` = VALUES(`status`), `is_verified` = VALUES(`is_verified`);
 
-INSERT INTO `properties` (`id`, `property_code`, `landlord_id`, `title`, `description`, `type`, `price`, `distance_km`, `status`, `total_size_sqft`, `roommate_capacity`, `bedroom_count`, `bathroom_count`, `kitchen_count`, `address_area`)
-VALUES (4, 'UIU-1004', 2, 'Occupied Campus Apartment', 'Development fixture for occupancy and lease tests.', 'Single', 5000.00, 0.45, 'occupied', 350, 1, 1, 1, 1, 'North Campus')
+INSERT INTO `properties` (`id`, `property_code`, `landlord_id`, `title`, `description`, `type`, `price`, `distance_km`, `status`, `total_size_sqft`, `roommate_capacity`, `bedroom_count`, `bathroom_count`, `kitchen_count`, `address_area`, `map_pin_x`, `map_pin_y`)
+VALUES (4, 'UIU-1004', 2, 'Occupied Campus Apartment', 'Development fixture for occupancy and lease tests.', 'Single', 5000.00, 0.45, 'occupied', 350, 1, 1, 1, 1, 'North Campus', 23.8009000, 90.4520000)
 ON DUPLICATE KEY UPDATE `status` = VALUES(`status`), `price` = VALUES(`price`);
 
 INSERT INTO `applications` (`property_id`, `student_id`, `landlord_id`, `student_card_no`, `contact_phone`, `move_in_date`, `employment`, `message`, `status`)

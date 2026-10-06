@@ -3,8 +3,7 @@ import type { Listing } from '../../types'
 import { listings } from '../../data'
 import { Badge } from '../../components/ui'
 import NotificationBell from '../../components/NotificationBell'
-import { addFavorite, addMaintenanceComment, cancelApplication as cancelStudentApplication, fetchPublicListings, getApplications, getFavorites, getLeases, getMaintenanceComments, getMaintenanceRequests, getProfile, getReceipts, getRentSummary, getStudentComplaints, getStudentReviews, payRent, removeFavorite, submitApplication as submitStudentApplication, submitMaintenanceRequest, submitStudentComplaint, submitStudentReview, updateProfile as updateStudentProfile, type StudentApplication } from '../../lib/studentApi'
-import { studentNotifs } from './constants'
+import { addFavorite, addMaintenanceComment, cancelApplication as cancelStudentApplication, fetchPublicListings, getApplications, getFavorites, getLeases, getMaintenanceComments, getMaintenanceRequests, getProfile, getReceipts, getRentSummary, getStudentChat, getStudentComplaints, getStudentNotifications, getStudentReviews, markStudentNotificationsRead, payRent, removeFavorite, sendStudentChat, submitApplication as submitStudentApplication, submitMaintenanceRequest, submitStudentComplaint, submitStudentReview, updateProfile as updateStudentProfile, type StudentApplication } from '../../lib/studentApi'
 import StudentSidebarNav from './Sidebar'
 import OverviewPage from './pages/OverviewPage'
 import BrowsePage from './pages/BrowsePage'
@@ -26,6 +25,24 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
   type Review = { id: number; landlord: string; property: string; listingId: string; landlordStars: number; propStars: number; text: string; date: string }
   type ChatMsg = { from: 'student' | 'landlord'; text: string }
 
+  const [studentNotifications, setStudentNotifications] = useState<Array<{ id: number; text: string; sub?: string; time: string; read: boolean }>>([])
+
+  const notificationAge = (value: string) => {
+    const minutes = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60_000))
+    if (minutes < 60) return `${minutes} min ago`
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) return `${hours} hr ago`
+    return `${Math.floor(hours / 24)} day${Math.floor(hours / 24) === 1 ? '' : 's'} ago`
+  }
+
+  const mapStudentNotification = (notification: { id: number; title: string; message: string; isRead: boolean; createdAt: string }) => ({
+    id: notification.id,
+    text: notification.title,
+    sub: notification.message,
+    time: notificationAge(notification.createdAt),
+    read: notification.isRead,
+  })
+
   const [page, setPage] = useState<StudentPage>('overview')
   const [applyListing, setApplyListing] = useState<Listing | null>(null)
   const [viewListing, setViewListing] = useState<Listing | null>(null)
@@ -34,6 +51,27 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
   const [studentProfile, setStudentProfile] = useState<{ name?: string; email?: string; studentId?: string } | null>(null)
   const openStudentListing = (l: Listing) => { setViewListing(l); setPage('listing-detail') }
   const [allListings, setAllListings] = useState<Listing[]>([])
+
+  useEffect(() => {
+    let active = true
+
+    const loadStudentNotifications = async () => {
+      try {
+        const notifications = await getStudentNotifications()
+        if (active) {
+          setStudentNotifications(notifications.map(mapStudentNotification))
+        }
+      } catch (error) {
+        if (active) {
+          setDashboardError(error instanceof Error ? error.message : 'Could not load notifications.')
+        }
+      }
+    }
+
+    loadStudentNotifications()
+
+    return () => { active = false }
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -53,7 +91,10 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
           getMaintenanceRequests().catch(() => []),
           fetchPublicListings().catch(() => []),
           getStudentReviews().catch(() => []),
-          getStudentComplaints().catch(() => []),
+          getStudentComplaints().catch((error: unknown) => {
+            if (active) setDashboardError(error instanceof Error ? error.message : 'Could not load complaints.')
+            return []
+          }),
         ])
 
         if (!active) return
@@ -90,15 +131,15 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
             date: r.date || (r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''),
           })))
         }
-        if (Array.isArray(complaintsResult) && complaintsResult.length > 0) {
-          setComplaints(complaintsResult.map((c: { id?: string; accusedName?: string; propertyTitle?: string; category?: string; description?: string; createdAt?: string; status?: string }) => ({
+        if (Array.isArray(complaintsResult)) {
+          setComplaints(complaintsResult.map((c: { id?: string; against?: string; accusedName?: string; property?: string; propertyTitle?: string; category?: string; description?: string; createdAt?: string; date?: string; status?: string }) => ({
             id: c.id ?? `CMP-${Date.now()}`,
-            against: c.accusedName ?? '',
-            property: c.propertyTitle ?? '',
+            against: c.against ?? c.accusedName ?? '',
+            property: c.property ?? c.propertyTitle ?? '',
             category: c.category ?? 'Other',
             subject: c.description?.split(' — ')[0] ?? '',
             description: c.description?.split(' — ').slice(1).join(' — ') ?? c.description ?? '',
-            date: c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '',
+            date: c.date ?? (c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''),
             status: (['Submitted', 'Under Review', 'Responded', 'Resolved', 'Closed'].includes(c.status ?? '') ? c.status : 'Submitted') as 'Submitted' | 'Under Review' | 'Responded' | 'Resolved' | 'Closed',
           })))
         }
@@ -113,6 +154,24 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
     loadStudentData()
     return () => { active = false }
   }, [])
+
+  const markStudentNotificationRead = async (id: number) => {
+    setStudentNotifications(items => items.map(item => item.id === id ? { ...item, read: true } : item))
+    try {
+      await markStudentNotificationsRead(id)
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Could not mark notification as read.')
+    }
+  }
+
+  const markAllStudentNotificationsRead = async () => {
+    setStudentNotifications(items => items.map(item => ({ ...item, read: true })))
+    try {
+      await markStudentNotificationsRead()
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Could not mark notifications as read.')
+    }
+  }
 
   // Browse filters
   const [typeFilter, setTypeFilter] = useState<'all' | 'Single' | 'Mess' | 'Shared' | 'Sublet'>('all')
@@ -460,21 +519,12 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
   // ── Chat ─────────────────────────────────────────────────────────────────────
   // All landlords from listings are available to chat with
   const allLandlords = useMemo(
-    () => Array.from(new Map(listings.map((listing) => [listing.landlord, listing])).values()),
-    [],
+    () => Array.from(new Map(allListings.map((listing) => [listing.landlord, listing])).values()),
+    [allListings],
   )
 
   const [activeChatLandlord, setActiveChatLandlord] = useState<string>(allLandlords[0]?.landlord ?? 'Rahman Faruk')
-  const [chatThreads, setChatThreads] = useState<Record<string, ChatMsg[]>>(() => ({
-    'Rahman Faruk': [
-      { from: 'landlord', text: 'Hello! How can I help you today?' },
-      { from: 'student', text: 'I wanted to ask about the parking availability.' },
-      { from: 'landlord', text: 'Yes, we have one parking spot included with your unit.' },
-    ],
-    ...(allLandlords[0] && allLandlords[0].landlord !== 'Rahman Faruk'
-      ? { [allLandlords[0].landlord]: [{ from: 'landlord', text: `Hello! I can help with ${allLandlords[0].title}.` }] }
-      : {}),
-  }))
+  const [chatThreads, setChatThreads] = useState<Record<string, ChatMsg[]>>({})
 
   useEffect(() => {
     if (!allLandlords.some((listing) => listing.landlord === activeChatLandlord) && allLandlords[0]) {
@@ -483,27 +533,60 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
   }, [activeChatLandlord, allLandlords])
   const [chatInput, setChatInput] = useState('')
 
-  const openChatWith = (landlordName: string) => {
-    if (!chatThreads[landlordName]) {
-      setChatThreads(t => ({ ...t, [landlordName]: [] }))
+  useEffect(() => {
+    if (page !== 'chat') return
+    let active = true
+    const loadChat = async () => {
+      try {
+        const conversations = await getStudentChat()
+        if (!active) return
+        const threads: Record<string, ChatMsg[]> = {}
+        for (const conversation of [...conversations].reverse()) {
+          threads[conversation.landlordName] = [
+            ...(threads[conversation.landlordName] ?? []),
+            ...conversation.messages.map(({ from, text }) => ({ from, text })),
+          ]
+        }
+        setChatThreads(threads)
+      } catch (error) {
+        if (active) setDashboardError(error instanceof Error ? error.message : 'Unable to load chat messages.')
+      }
     }
+    void loadChat()
+    const timer = window.setInterval(() => { void loadChat() }, 3000)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [page])
+
+  const openChatWith = (landlordName: string) => {
     setActiveChatLandlord(landlordName)
     setPage('chat')
   }
 
-  const sendChat = () => {
-    if (!chatInput.trim()) return
-    const msg: ChatMsg = { from: 'student', text: chatInput }
-    setChatThreads(t => ({ ...t, [activeChatLandlord]: [...(t[activeChatLandlord] ?? []), msg] }))
-    setChatInput('')
+  const sendChat = async () => {
+    const message = chatInput.trim()
+    const propertyId = allLandlords.find((listing) => listing.landlord === activeChatLandlord)?.propertyId
+    if (!message) return
+    if (!propertyId) {
+      setDashboardError('Select a landlord with a linked property before sending a message.')
+      return
+    }
+    try {
+      const conversation = await sendStudentChat(propertyId, message)
+      setChatThreads((threads) => ({
+        ...threads,
+        [conversation.landlordName]: conversation.messages.map(({ from, text }) => ({ from, text })),
+      }))
+      setChatInput('')
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Unable to send your message.')
+    }
   }
 
   const activeMsgs = chatThreads[activeChatLandlord] ?? []
-  const activeLandlordListing = listings.find(l => l.landlord === activeChatLandlord)
+  const activeLandlordListing = allLandlords.find(l => l.landlord === activeChatLandlord)
 
   // ── Additional UI state ──────────────────────────────────────────────────────
   const [payMethod, setPayMethod] = useState<'card'|'mobile'|'bank'>('card')
-  const [chatCategoryTab, setChatCategoryTab] = useState<'current'|'previous'|'potential'>('current')
   const [expandedMaintId, setExpandedMaintId] = useState<number|null>(null)
   const [reviewStep, setReviewStep] = useState(0)
   const [questionAnswers, setQuestionAnswers] = useState<number[]>([0,0,0,0,0])
@@ -514,9 +597,7 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
   const [deactivateInput, setDeactivateInput] = useState('')
   // Complaints
   type Complaint = { id: string; against: string; property: string; category: string; subject: string; description: string; date: string; status: 'Submitted' | 'Under Review' | 'Responded' | 'Resolved' | 'Closed' }
-  const [complaints, setComplaints] = useState<Complaint[]>([
-    { id: 'CMP-001', against: 'Rahman Faruk', property: 'Studio near Gate 3', category: 'Maintenance Neglect', subject: 'AC repair ignored for 2 weeks', description: 'Reported the AC issue on July 10th but no response received.', date: '22 Jul 2026', status: 'Under Review' },
-  ])
+  const [complaints, setComplaints] = useState<Complaint[]>([])
   const [showComplaintForm, setShowComplaintForm] = useState(false)
   const [cForm, setCForm] = useState({ against: '', property: '', category: 'Maintenance Neglect', subject: '', description: '' })
   const complaintTargets = useMemo(() => {
@@ -547,29 +628,29 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
 
   const submitComplaint = async () => {
     if (!cForm.subject.trim() || !cForm.against.trim() || !cForm.property.trim()) return
-    const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-    setComplaints(prev => [...prev, {
-      id: `CMP-${String(prev.length + 1).padStart(3, '0')}`,
-      against: cForm.against,
-      property: cForm.property,
-      category: cForm.category,
-      subject: cForm.subject,
-      description: cForm.description,
-      date: today,
-      status: 'Submitted',
-    }])
-    setCForm({ against: '', property: '', category: 'Maintenance Neglect', subject: '', description: '' })
-    setShowComplaintForm(false)
+    setDashboardError('')
     try {
-      await submitStudentComplaint({
+      const created = await submitStudentComplaint({
         against: cForm.against,
         property: cForm.property,
         category: cForm.category,
         subject: cForm.subject,
         description: cForm.description,
       })
-    } catch (err) {
-      console.error('Failed to submit complaint to backend:', err)
+      setComplaints(prev => [{
+        id: String(created?.id ?? `CMP-${Date.now()}`),
+        against: cForm.against,
+        property: cForm.property,
+        category: cForm.category,
+        subject: cForm.subject,
+        description: cForm.description,
+        date: created?.date ?? new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+        status: 'Submitted',
+      }, ...prev])
+      setCForm({ against: '', property: '', category: 'Maintenance Neglect', subject: '', description: '' })
+      setShowComplaintForm(false)
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : 'Could not submit complaint.')
     }
   }
   // Maintenance chat (per request) — backed by maintenance_comments API
@@ -684,7 +765,11 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
         )}
 
         <div className="flex justify-end px-6 pt-5">
-          <NotificationBell notifications={studentNotifs} />
+          <NotificationBell
+            notifications={studentNotifications}
+            onMarkRead={markStudentNotificationRead}
+            onMarkAllRead={markAllStudentNotificationsRead}
+          />
         </div>
         <div className="px-6 pb-6 max-w-5xl mx-auto space-y-6">
           {page === 'overview' && (
@@ -858,8 +943,6 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
               setChatInput={setChatInput}
               sendChat={sendChat}
               openChatWith={openChatWith}
-              chatCategoryTab={chatCategoryTab}
-              setChatCategoryTab={setChatCategoryTab}
               activeMsgs={activeMsgs}
               activeLandlordListing={activeLandlordListing}
               setViewListing={setViewListing}

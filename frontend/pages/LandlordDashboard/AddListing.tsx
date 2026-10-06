@@ -1,4 +1,5 @@
 import { InteractiveMap } from '../../components/Map'
+import type { GeoCoordinates } from '../../lib/geo'
 import type { Dispatch, SetStateAction } from 'react'
 import type { LandlordPage } from './Sidebar'
 
@@ -23,7 +24,7 @@ type AddListingPageProps = {
   setForm: Dispatch<SetStateAction<{ title: string; type: string; price: string; description: string }>>
   addrForm: AddressForm
   handleAddrChange: (field: keyof AddressForm, value: string) => void
-  mapPin: { x: number; y: number } | null
+  mapPin: GeoCoordinates | null
   mapKm: string
   addrSyncing: boolean
   facilities: string[]
@@ -40,7 +41,7 @@ type AddListingPageProps = {
   isAddDirty: boolean
   setShowDiscardAddConfirm: Dispatch<SetStateAction<boolean>>
   setPage: (page: LandlordPage) => void
-  onPin: (pin: { x: number; y: number }) => void
+  onPin: (pin: GeoCoordinates) => void
   onSubmit: () => void
 }
 
@@ -74,7 +75,7 @@ export default function AddListingPage({
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-[#111827]">Add New Listing</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Enter an address or click the map — both stay in sync</p>
+          <p className="text-sm text-gray-500 mt-0.5">Enter the address and click the map to set the exact property location</p>
         </div>
         <button onClick={() => (isAddDirty ? setShowDiscardAddConfirm(true) : setPage('listings'))} className="text-sm text-gray-500 border border-gray-200 px-4 py-2 rounded-xl hover:bg-white transition-colors">← Back</button>
       </div>
@@ -101,7 +102,7 @@ export default function AddListingPage({
             <div className="flex items-center justify-between">
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Property Address</div>
               {addrSyncing && <span className="text-xs text-sky-600 font-medium animate-pulse">Syncing…</span>}
-              {mapPin && !addrSyncing && <span className="text-xs text-emerald-600 font-medium">✓ Map synced</span>}
+              {mapPin && !addrSyncing && <span className="text-xs text-emerald-600 font-medium">✓ Map location selected</span>}
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">Street / Road</label>
@@ -230,8 +231,7 @@ export default function AddListingPage({
           <div className="bg-white rounded-2xl p-5 shadow-sm">
             <div className="font-semibold text-[#1a1a18] mb-1">Location on Map</div>
             <p className="text-xs text-gray-500 mb-3">
-              Click to pin your property. The address fields will update automatically.
-              Or type an address above to move the pin.
+              Click the map to place the property pin. Enter the street and area in the address fields.
             </p>
             <InteractiveMap onPin={onPin} pin={mapPin} />
             <div className="mt-3 space-y-1">
@@ -247,13 +247,15 @@ export default function AddListingPage({
           </div>
           {mapPin && (
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-1.5 text-xs">
-              <div className="font-semibold text-[#1a1a18] text-xs uppercase tracking-wider mb-2">Detected Address</div>
+              <div className="font-semibold text-[#1a1a18] text-xs uppercase tracking-wider mb-2">Location Preview</div>
               {[
                 ['Street', addrForm.street],
                 ['Area', addrForm.area],
                 ['City', addrForm.city],
                 ['District', addrForm.district],
                 ['Postal Code', addrForm.postal],
+                ['Latitude', mapPin.latitude.toFixed(6)],
+                ['Longitude', mapPin.longitude.toFixed(6)],
                 ['Distance', mapKm ? `${mapKm} km from UIU` : '—'],
               ].map(([label, value]) => (
                 <div key={label} className="flex gap-2">

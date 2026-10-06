@@ -80,8 +80,8 @@ CREATE TABLE `properties` (
   `address_area` VARCHAR(100) DEFAULT NULL,
   `address_city` VARCHAR(50) NOT NULL DEFAULT 'Dhaka',
   `address_postal` VARCHAR(20) DEFAULT NULL,
-  `map_pin_x` DECIMAL(5, 2) NOT NULL DEFAULT 50.00,
-  `map_pin_y` DECIMAL(5, 2) NOT NULL DEFAULT 50.00,
+  `map_pin_x` DECIMAL(10, 7) DEFAULT NULL,
+  `map_pin_y` DECIMAL(10, 7) DEFAULT NULL,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT `fk_properties_landlord`
@@ -420,9 +420,9 @@ ON DUPLICATE KEY UPDATE `email`=VALUES(`email`), `password_hash`=VALUES(`passwor
 
 -- 3. Seed Properties
 INSERT INTO `properties` (`id`, `property_code`, `landlord_id`, `title`, `description`, `type`, `price`, `distance_km`, `status`, `total_size_sqft`, `roommate_capacity`, `parking`, `bedroom_count`, `living_count`, `bathroom_count`, `kitchen_count`, `veranda_count`, `room_sizes_json`, `address_street`, `address_area`, `map_pin_x`, `map_pin_y`) VALUES
-  (1, 'UIU-1001', 2, 'Studio near Gate 3', 'Cozy modern studio apartment walking distance to UIU campus Gate 3. Fully tiled with AC and high-speed fiber WiFi.', 'Single', 4200.00, 0.30, 'available', 280, 1, 'Not Available', 1, 0, 1, 1, 0, '{"bedroom": 120, "bathroom": 45, "kitchen": 60}', 'Road 4, House 12', 'Gate 3 Area, North Campus', 50.00, 34.00),
-  (2, 'UIU-1002', 3, 'Shared Mess – South Campus', 'Spacious bachelor mess with 3 times meals included, dedicated cook, and 24/7 CCTV surveillance.', 'Mess', 2800.00, 0.60, 'available', 460, 4, 'Not Available', 2, 1, 2, 1, 0, '{"bedroom": 100, "living": 150, "bathroom": 40, "kitchen": 70}', 'South Avenue, Block B', 'Gate 1 Area, South Campus', 50.00, 66.00),
-  (3, 'UIU-1003', 4, 'Sublet – Bashundhara R/A', 'Premium sublet room in a residential apartment in Bashundhara R/A. Features full generator backup, lift, and balcony.', 'Sublet', 3500.00, 1.20, 'available', 620, 2, 'Available (Motorcycle)', 2, 1, 2, 1, 1, '{"bedroom": 140, "living": 180, "bathroom": 50, "kitchen": 75, "veranda": 40}', 'Road 11, Block D', 'Bashundhara R/A', 57.00, 37.00)
+  (1, 'UIU-1001', 2, 'Studio near Gate 3', 'Cozy modern studio apartment walking distance to UIU campus Gate 3. Fully tiled with AC and high-speed fiber WiFi.', 'Single', 4200.00, 0.30, 'available', 280, 1, 'Not Available', 1, 0, 1, 1, 0, '{"bedroom": 120, "bathroom": 45, "kitchen": 60}', 'Road 4, House 12', 'Gate 3 Area, North Campus', 23.7989000, 90.4525500),
+  (2, 'UIU-1002', 3, 'Shared Mess – South Campus', 'Spacious bachelor mess with 3 times meals included, dedicated cook, and 24/7 CCTV surveillance.', 'Mess', 2800.00, 0.60, 'available', 460, 4, 'Not Available', 2, 1, 2, 1, 0, '{"bedroom": 100, "living": 150, "bathroom": 40, "kitchen": 70}', 'South Avenue, Block B', 'Gate 1 Area, South Campus', 23.7935000, 90.4496000),
+  (3, 'UIU-1003', 4, 'Sublet – Bashundhara R/A', 'Premium sublet room in a residential apartment in Bashundhara R/A. Features full generator backup, lift, and balcony.', 'Sublet', 3500.00, 1.20, 'available', 620, 2, 'Available (Motorcycle)', 2, 1, 2, 1, 1, '{"bedroom": 140, "living": 180, "bathroom": 50, "kitchen": 75, "veranda": 40}', 'Road 11, Block D', 'Bashundhara R/A', 23.7989000, 90.4633500)
 ON DUPLICATE KEY UPDATE `property_code`=VALUES(`property_code`);
 
 -- 4. Seed Property Amenities
@@ -447,4 +447,3 @@ ON DUPLICATE KEY UPDATE `id`=VALUES(`id`);
 
 INSERT INTO `complaint_replies` (`complaint_id`, `sender_id`, `message_text`) VALUES
   ('CMP-001', 1, 'We have received your complaint and are reviewing it with the landlord.');
-

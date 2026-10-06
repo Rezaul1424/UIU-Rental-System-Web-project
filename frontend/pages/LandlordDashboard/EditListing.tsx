@@ -1,6 +1,7 @@
 import { InteractiveMap } from '../../components/Map'
 import type { Dispatch, SetStateAction } from 'react'
 import type { Listing } from '../../types'
+import type { GeoCoordinates } from '../../lib/geo'
 import type { LandlordPage } from './Sidebar'
 
 type AddressForm = {
@@ -22,16 +23,16 @@ type RoomCounts = {
 type EditListingPageProps = {
   editListingId: number | null
   myListings: Listing[]
-  editForm: { title: string; type: string; price: string; distance: string; description: string; status: string }
-  setEditForm: Dispatch<SetStateAction<{ title: string; type: string; price: string; distance: string; description: string; status: string }>>
+  editForm: { title: string; type: string; price: string; description: string; status: string }
+  setEditForm: Dispatch<SetStateAction<{ title: string; type: string; price: string; description: string; status: string }>>
   editFacilities: string[]
   toggleEditFacility: (facility: string) => void
   editAddrForm: AddressForm
   handleEditAddrChange: (field: keyof AddressForm, value: string) => void
-  editMapPin: { x: number; y: number } | null
+  editMapPin: GeoCoordinates | null
   editMapKm: string
   editAddrSyncing: boolean
-  handleEditMapPin: (pin: { x: number; y: number }) => void
+  handleEditMapPin: (pin: GeoCoordinates) => void
   roomCounts: RoomCounts
   roomSizeInputs: Record<string, string[]>
   updateRoomCount: (room: keyof RoomCounts, count: number) => void
@@ -101,15 +102,9 @@ export default function EditListingPage({
               {['Single', 'Shared', 'Mess', 'Sublet'].map(type => <option key={type}>{type}</option>)}
             </select>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Monthly Rent (৳)</label>
-              <input type="number" value={editForm.price} onChange={e => setEditForm(f => ({ ...f, price: e.target.value }))} className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#1a1a18]" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Distance (km)</label>
-              <input type="number" value={editForm.distance} onChange={e => setEditForm(f => ({ ...f, distance: e.target.value }))} className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#1a1a18]" />
-            </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Monthly Rent (৳)</label>
+            <input type="number" value={editForm.price} onChange={e => setEditForm(f => ({ ...f, price: e.target.value }))} className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#1a1a18]" />
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Description</label>
@@ -267,17 +262,15 @@ export default function EditListingPage({
 
           <div className="bg-white rounded-2xl p-5 shadow-sm space-y-3">
             <div className="font-semibold text-[#1a1a18] text-sm">Map Location</div>
-            <p className="text-xs text-gray-400">Click the map to pin your property location, or fill in the address above.</p>
+            <p className="text-xs text-gray-400">Click the map to pin your property’s real location; the distance is calculated from UIU.</p>
             <InteractiveMap onPin={handleEditMapPin} pin={editMapPin} />
             {editMapPin && (
               <div className="bg-gray-50 rounded-xl p-3 space-y-1">
-                <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Detected Address</div>
+                <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Selected Location</div>
                 {[
-                  ['Street', editAddrForm.street],
-                  ['Area', editAddrForm.area],
-                  ['City', editAddrForm.city],
-                  ['Postal', editAddrForm.postal],
-                  ['Distance', editMapKm],
+                  ['Latitude', editMapPin.latitude.toFixed(6)],
+                  ['Longitude', editMapPin.longitude.toFixed(6)],
+                  ['Distance from UIU', `${editMapKm} km`],
                 ].filter(([, value]) => value).map(([label, value]) => (
                   <div key={label} className="flex justify-between text-xs"><span className="text-gray-400">{label}</span><span className="text-[#1a1a18] font-medium">{value}</span></div>
                 ))}

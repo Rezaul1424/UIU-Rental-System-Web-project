@@ -1,4 +1,5 @@
 import type { Listing } from '../types'
+import { parseUiuCoordinates } from '../lib/geo';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000'
 
@@ -24,7 +25,7 @@ type ApiListing = {
   parkingAvailable: boolean
   facilities: string[]
   images: { id: string; url: string; isPrimary: boolean }[]
-  address: { line1: string; area?: string; city: string }
+  address: { line1: string; area?: string; city: string; latitude?: number | string | null; longitude?: number | string | null }
   distanceKm?: number
 }
 
@@ -70,6 +71,7 @@ function mapListing(listing: ApiListing): Listing {
     status: 'available',
     facilities: listing.facilities,
     image: primaryImage,
+    mapPin: parseUiuCoordinates(listing.address.latitude, listing.address.longitude),
     rooms: {
       bedroom: listing.bedrooms ?? 0,
       living: 0,

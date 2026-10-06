@@ -1,5 +1,6 @@
 import type { Listing } from '../types';
 import { api } from './api';
+import { parseUiuCoordinates } from './geo';
 
 const normalizeListingId = (value: unknown) => {
   if (typeof value === 'number') return value;
@@ -35,9 +36,7 @@ const toListing = (item: any): Listing => ({
   totalSize: item.totalSize || 0,
   roommateCapacity: item.roommateCapacity || 1,
   parking: item.parking || 'Not Available',
-  mapPin: item.address?.latitude != null && item.address?.longitude != null
-    ? { x: Number(item.address.latitude), y: Number(item.address.longitude) }
-    : undefined,
+  mapPin: parseUiuCoordinates(item.address?.latitude, item.address?.longitude),
   street: item.address?.line1,
   area: item.address?.area,
 });
@@ -56,6 +55,47 @@ export type LandlordProfile = {
 export const getProfile = () => api.get<LandlordProfile>('/api/v1/landlord/profile');
 export const updateProfile = (payload: { name?: string; phone?: string; companyName?: string }) =>
   api.patch<LandlordProfile>('/api/v1/landlord/profile', payload);
+
+export type LandlordNotification = {
+  id: number;
+  title: string;
+  message: string;
+  type: string;
+  isRead: boolean;
+  createdAt: string;
+};
+
+export const getLandlordNotifications = async (): Promise<LandlordNotification[]> => {
+  const payload = await api.get<Array<any> | { data?: Array<any> }>('/api/v1/landlord/notifications');
+  const notifications = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
+
+  return notifications.map((notification) => ({
+    id: Number(notification.id ?? Date.now()),
+    title: String(notification.title ?? 'Notification'),
+    message: String(notification.message ?? notification.text ?? ''),
+    type: String(notification.type ?? 'general'),
+    isRead: Boolean(notification.isRead ?? notification.read ?? false),
+    createdAt: String(notification.createdAt ?? new Date().toISOString()),
+  }));
+};
+
+export const markLandlordNotificationsRead = (notificationId?: number) =>
+  api.patch('/api/v1/landlord/notifications/read', notificationId === undefined ? undefined : { notificationId });
+
+export type LandlordChatConversation = {
+  id: string;
+  studentId: string;
+  studentName: string;
+  landlordId: string;
+  landlordName: string;
+  propertyId: string;
+  propertyTitle: string;
+  messages: Array<{ id: string; from: 'student' | 'landlord'; text: string; createdAt: string }>;
+};
+
+export const getLandlordChat = () => api.get<LandlordChatConversation[]>('/api/v1/landlord/chat');
+export const sendLandlordChat = (studentId: string, propertyId: string, message: string) =>
+  api.post<LandlordChatConversation>('/api/v1/landlord/chat', { studentId, propertyId, message });
 
 export const getMyListings = async (): Promise<Listing[]> => {
   const payload = await api.get<Array<any>>('/api/v1/landlord/listings');

@@ -1,5 +1,6 @@
 import mysql from 'mysql2/promise';
 import type { ResultSetHeader, RowDataPacket } from 'mysql2';
+import type { PoolConnection } from 'mysql2/promise';
 
 export type AdminNotification = {
   id: number;
@@ -21,6 +22,7 @@ const db = mysql.createPool({
 });
 
 let fixtureNotifications: AdminNotification[] = [];
+let fixtureNotificationId = 0;
 
 export async function listAdminNotifications(userId: string): Promise<AdminNotification[]> {
   if (!persistentNotifications) return fixtureNotifications.map((notification) => ({ ...notification }));
@@ -60,8 +62,43 @@ export async function notifyAdminsAboutPendingLandlord(name: string, userId?: st
   );
 }
 
+export async function notifyAdminsAboutComplaint(
+  connection: PoolConnection,
+  complaintId: string,
+  role: 'student' | 'landlord',
+  category: string,
+): Promise<void> {
+  const title = 'New complaint submitted';
+  const message = `${role === 'student' ? 'Student' : 'Landlord'} complaint ${complaintId} · ${category}`;
+  const [result] = await connection.execute<ResultSetHeader>(
+    `INSERT INTO notifications (user_id, title, message, type)
+     SELECT id, ?, ?, 'complaint' FROM users WHERE role = 'admin'`,
+    [title, message],
+  );
+  if (result.affectedRows === 0) {
+    throw new Error('Could not notify any administrator about the submitted complaint.');
+  }
+}
+
+export function addAdminComplaintNotificationFixture(
+  complaintId: string,
+  role: 'student' | 'landlord',
+  category: string,
+): void {
+  if (persistentNotifications) return;
+  fixtureNotifications.unshift({
+    id: ++fixtureNotificationId,
+    title: 'New complaint submitted',
+    message: `${role === 'student' ? 'Student' : 'Landlord'} complaint ${complaintId} · ${category}`,
+    type: 'complaint',
+    isRead: false,
+    createdAt: new Date().toISOString(),
+  });
+}
+
 export function resetAdminNotificationFixtures(): void {
   fixtureNotifications = [];
+  fixtureNotificationId = 0;
 }
 
 function mapNotification(row: RowDataPacket): AdminNotification {
