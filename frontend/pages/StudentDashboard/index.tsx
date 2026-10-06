@@ -3,7 +3,7 @@ import type { Listing } from '../../types'
 import { listings } from '../../data'
 import { Badge } from '../../components/ui'
 import NotificationBell from '../../components/NotificationBell'
-import { addFavorite, addMaintenanceComment, cancelApplication as cancelStudentApplication, fetchPublicListings, getApplications, getFavorites, getLeases, getMaintenanceComments, getMaintenanceRequests, getProfile, getReceipts, getRentSummary, getStudentComplaints, getStudentReviews, payRent, removeFavorite, submitApplication as submitStudentApplication, submitMaintenanceRequest, submitStudentComplaint, submitStudentReview, updateProfile as updateStudentProfile, type StudentApplication } from '../../lib/studentApi'
+import { addFavorite, addMaintenanceComment, cancelApplication as cancelStudentApplication, fetchPublicListings, getApplications, getFavorites, getLeases, getMaintenanceComments, getMaintenanceRequests, getProfile, getReceipts, getRentSummary, getStudentComplaints, getStudentReviews, payRent, removeFavorite, submitApplication as submitStudentApplication, submitMaintenanceRequest, submitStudentComplaint, submitStudentReview, updateProfile as updateStudentProfile, type StudentApplication, type StudentProfile } from '../../lib/studentApi'
 import { studentNotifs } from './constants'
 import StudentSidebarNav from './Sidebar'
 import OverviewPage from './pages/OverviewPage'
@@ -31,7 +31,7 @@ export default function StudentDashboard({ userName, onSignOut }: { userName: st
   const [viewListing, setViewListing] = useState<Listing | null>(null)
   const [dashboardLoading, setDashboardLoading] = useState(false)
   const [dashboardError, setDashboardError] = useState('')
-  const [studentProfile, setStudentProfile] = useState<{ name?: string; email?: string; studentId?: string } | null>(null)
+  const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null)
   const openStudentListing = (l: Listing) => { setViewListing(l); setPage('listing-detail') }
   const [allListings, setAllListings] = useState<Listing[]>([])
 
